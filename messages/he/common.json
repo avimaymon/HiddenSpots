@@ -1,0 +1,23 @@
+{
+  "appName": "HiddenSpots",
+  "loading": "טוען…",
+  "save": "שמור",
+  "cancel": "ביטול",
+  "delete": "מחק",
+  "edit": "ערוך",
+  "close": "סגור",
+  "search": "חיפוש",
+  "add": "הוסף",
+  "share": "שתף",
+  "import": "ייבוא",
+  "export": "ייצוא",
+  "settings": "הגדרות",
+  "language": "שפה",
+  "hebrew": "עברית",
+  "english": "English",
+  "more": "עוד",
+  "done": "סיום",
+  "view": "צפייה",
+  "create": "צור",
+  "offline": "אין חיבור — השינויים יסתנכרנו כשתתחבר"
+}

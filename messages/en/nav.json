@@ -1,0 +1,15 @@
+{
+  "map": "Map",
+  "locations": "Locations",
+  "list": "List",
+  "collections": "Collections",
+  "trips": "Trips",
+  "visits": "Visits",
+  "dashboard": "Dashboard",
+  "import": "Import",
+  "export": "Export",
+  "settings": "Settings",
+  "signOut": "Sign out",
+  "addSpot": "Add spot",
+  "search": "Search locations…"
+}

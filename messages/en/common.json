@@ -1,0 +1,23 @@
+{
+  "appName": "HiddenSpots",
+  "loading": "Loading…",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "edit": "Edit",
+  "close": "Close",
+  "search": "Search",
+  "add": "Add",
+  "share": "Share",
+  "import": "Import",
+  "export": "Export",
+  "settings": "Settings",
+  "language": "Language",
+  "hebrew": "עברית",
+  "english": "English",
+  "more": "More",
+  "done": "Done",
+  "view": "View",
+  "create": "Create",
+  "offline": "Offline — changes will sync when you reconnect"
+}

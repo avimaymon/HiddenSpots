@@ -1,0 +1,20 @@
+{
+  "name": "HiddenSpots",
+  "short_name": "HiddenSpots",
+  "description": "האטלס האישי שלך למקומות טבע נסתרים",
+  "start_url": "/he/app",
+  "display": "standalone",
+  "background_color": "#f8f7f4",
+  "theme_color": "#166534",
+  "orientation": "any",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

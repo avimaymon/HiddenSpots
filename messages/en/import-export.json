@@ -1,0 +1,7 @@
+{
+  "title": "Import & Export",
+  "description": "Import spots from files or export for backup",
+  "chooseFile": "Choose file",
+  "importSpots": "Import spots",
+  "found": "Found {count} locations"
+}
