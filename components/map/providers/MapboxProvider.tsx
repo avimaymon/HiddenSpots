@@ -1,15 +1,16 @@
 "use client";
 
 import "mapbox-gl/dist/mapbox-gl.css";
-import { useCallback, useRef, useState } from "react";
-import Map, { NavigationControl, GeolocateControl, FullscreenControl, Marker, Popup, Source, Layer } from "react-map-gl/mapbox";
+import mapboxgl from "mapbox-gl";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Map, { NavigationControl, FullscreenControl, Marker, Popup, Source, Layer } from "react-map-gl/mapbox";
 import type { MapRef, MapMouseEvent } from "react-map-gl/mapbox";
+import { useTranslations } from "next-intl";
 import { useSettingsStore } from "@/lib/store/settings";
 import { useMapStore } from "@/lib/store/map";
 import type { MapViewProps } from "@/lib/map/types";
 import { LocationPopup } from "@/components/map/shared/LocationPopup";
 import { MapStyleSwitcher } from "@/components/map/shared/MapStyleSwitcher";
-import { AddLocationPin } from "@/components/map/shared/AddLocationPin";
 import { cn } from "@/lib/utils";
 
 export default function MapboxProvider({
@@ -18,24 +19,86 @@ export default function MapboxProvider({
   onLocationClick,
   onMapClick,
   isAddingLocation,
+  measureMode,
   showClusters = true,
   className,
+  tripPolyline,
+  showHeatmap,
+  geojsonOverlay,
 }: MapViewProps) {
+  const t = useTranslations("map");
   const { mapStyle, setMapStyle } = useSettingsStore();
   const { viewState, setViewState } = useMapStore();
   const mapRef = useRef<MapRef>(null);
   const [popupLocation, setPopupLocation] = useState<(typeof locations)[0] | null>(null);
+  const [terrain3D, setTerrain3D] = useState(false);
+  const [showContours, setShowContours] = useState(false);
+
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    if (terrain3D) {
+      if (!map.getSource("mapbox-dem")) {
+        map.addSource("mapbox-dem", { type: "raster-dem", url: "mapbox://mapbox.mapbox-terrain-dem-v1", tileSize: 512 });
+      }
+      map.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
+    } else {
+      map.setTerrain(null);
+    }
+  }, [terrain3D]);
+
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map || !map.isStyleLoaded()) return;
+    if (showContours) {
+      if (!map.getSource("contours")) {
+        map.addSource("contours", { type: "vector", url: "mapbox://mapbox.mapbox-terrain-v2" });
+        map.addLayer({
+          id: "contour-lines",
+          type: "line",
+          source: "contours",
+          "source-layer": "contour",
+          paint: { "line-color": "#6b7280", "line-opacity": 0.4, "line-width": 0.8 },
+        });
+      }
+    } else if (map.getLayer("contour-lines")) {
+      map.removeLayer("contour-lines");
+    }
+  }, [showContours]);
 
   const handleMapClick = useCallback(
     (e: MapMouseEvent) => {
-      if (isAddingLocation && onMapClick) {
+      if (onMapClick && (isAddingLocation || measureMode)) {
         onMapClick({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+        return;
+      }
+      // Handle click on cluster or point via interactiveLayerIds
+      const feature = e.features?.[0];
+      if (!feature) return;
+
+      if (feature.layer?.id === "cluster-circle") {
+        // Zoom in on cluster click
+        const map = mapRef.current?.getMap();
+        if (!map) return;
+        const source = map.getSource("locations") as mapboxgl.GeoJSONSource & {
+          getClusterExpansionZoom: (id: number, cb: (err: Error | null, zoom: number) => void) => void;
+        };
+        const clusterId = feature.properties?.cluster_id as number;
+        source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+          if (err) return;
+          const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
+          map.easeTo({ center: coords, zoom: zoom ?? undefined });
+        });
+      } else if (feature.layer?.id === "unclustered-points") {
+        const id = feature.properties?.id as string;
+        if (id) {
+          setPopupLocation(null);
+          onLocationClick(id);
+        }
       }
     },
-    [isAddingLocation, onMapClick]
+    [isAddingLocation, measureMode, onMapClick, onLocationClick]
   );
-
-  const selectedLocation = locations.find((l) => l.id === selectedId);
 
   const geojson = {
     type: "FeatureCollection" as const,
@@ -48,7 +111,17 @@ export default function MapboxProvider({
         color: loc.categoryColor,
         isSelected: loc.id === selectedId,
         isFavorite: loc.isFavorite,
+        visitCount: loc.visitCount ?? 0,
       },
+    })),
+  };
+
+  const heatmapGeojson = {
+    type: "FeatureCollection" as const,
+    features: locations.map((loc) => ({
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: [loc.longitude, loc.latitude] },
+      properties: { weight: Math.min((loc.visitCount ?? 1), 20) / 20 },
     })),
   };
 
@@ -74,9 +147,85 @@ export default function MapboxProvider({
         onMouseLeave={() => setPopupLocation(null)}
         style={{ width: "100%", height: "100%" }}
       >
-        <NavigationControl position="top-right" />
-        <GeolocateControl position="top-right" trackUserLocation />
+        <NavigationControl position="top-right" showCompass={false} />
         <FullscreenControl position="top-right" />
+
+        {/* Visit frequency heatmap */}
+        {showHeatmap && (
+          <Source id="heatmap-src" type="geojson" data={heatmapGeojson}>
+            <Layer
+              id="heatmap-layer"
+              type="heatmap"
+              paint={{
+                "heatmap-weight": ["get", "weight"],
+                "heatmap-intensity": 1.5,
+                "heatmap-color": [
+                  "interpolate", ["linear"], ["heatmap-density"],
+                  0, "rgba(0,0,255,0)",
+                  0.2, "rgba(0,255,255,0.5)",
+                  0.4, "rgba(0,255,0,0.7)",
+                  0.6, "rgba(255,255,0,0.8)",
+                  0.8, "rgba(255,165,0,0.9)",
+                  1, "rgba(255,0,0,1)",
+                ],
+                "heatmap-radius": 30,
+                "heatmap-opacity": 0.7,
+              }}
+            />
+          </Source>
+        )}
+
+        {/* Custom GeoJSON overlay */}
+        {geojsonOverlay && (
+          <Source id="geojson-overlay" type="geojson" data={geojsonOverlay}>
+            <Layer
+              id="geojson-overlay-line"
+              type="line"
+              paint={{ "line-color": "#3b82f6", "line-width": 2, "line-opacity": 0.8 }}
+            />
+            <Layer
+              id="geojson-overlay-fill"
+              type="fill"
+              paint={{ "fill-color": "#3b82f6", "fill-opacity": 0.1 }}
+              filter={["==", ["geometry-type"], "Polygon"]}
+            />
+          </Source>
+        )}
+
+        {/* Trip polyline */}
+        {tripPolyline && tripPolyline.length >= 2 && (
+          <Source
+            id="trip-line"
+            type="geojson"
+            data={{
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: tripPolyline.map((p) => [p.lng, p.lat]),
+              },
+              properties: {},
+            }}
+          >
+            <Layer
+              id="trip-line-casing"
+              type="line"
+              paint={{
+                "line-color": "#fff",
+                "line-width": 6,
+                "line-opacity": 0.7,
+              }}
+            />
+            <Layer
+              id="trip-line-fill"
+              type="line"
+              paint={{
+                "line-color": tripPolyline[0].color,
+                "line-width": 3.5,
+                "line-dasharray": [2, 1.5],
+              }}
+            />
+          </Source>
+        )}
 
         {showClusters ? (
           <Source
@@ -146,13 +295,15 @@ export default function MapboxProvider({
           ))
         )}
 
-        {popupLocation && (
+        {/* Hover tooltip — desktop only, augments click selection */}
+        {popupLocation && !selectedId && (
           <Popup
             latitude={popupLocation.latitude}
             longitude={popupLocation.longitude}
             closeButton={false}
             anchor="bottom"
             offset={16}
+            onClose={() => setPopupLocation(null)}
           >
             <LocationPopup
               location={popupLocation}
@@ -164,9 +315,32 @@ export default function MapboxProvider({
 
       <MapStyleSwitcher provider="mapbox" currentStyle={mapStyle} onStyleChange={setMapStyle} />
 
+      <div className="absolute bottom-20 right-3 z-10 flex flex-col gap-1.5">
+        <button
+          onClick={() => setTerrain3D((v) => !v)}
+          className={cn(
+            "h-9 w-9 rounded-xl border border-border/60 bg-background/90 backdrop-blur-sm shadow-sm flex items-center justify-center text-sm transition-colors",
+            terrain3D ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
+          )}
+          title="3D Terrain"
+        >
+          ⛰️
+        </button>
+        <button
+          onClick={() => setShowContours((v) => !v)}
+          className={cn(
+            "h-9 w-9 rounded-xl border border-border/60 bg-background/90 backdrop-blur-sm shadow-sm flex items-center justify-center text-sm transition-colors",
+            showContours ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
+          )}
+          title="Contour lines"
+        >
+          〰️
+        </button>
+      </div>
+
       {isAddingLocation && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-background border border-border rounded-xl px-4 py-2 text-sm font-medium shadow-lg animate-fade-in">
-          Click on the map to place your location
+          {t("tapToPlace")}
         </div>
       )}
     </div>

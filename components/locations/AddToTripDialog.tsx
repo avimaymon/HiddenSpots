@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { getTrips, addLocationToTrip } from "@/lib/actions/trips";
 import { toast } from "@/hooks/use-toast";
+import { useTranslations } from "next-intl";
 
 interface Props {
   locationId: string;
@@ -18,12 +19,15 @@ interface Props {
 type Trip = Awaited<ReturnType<typeof getTrips>>[number];
 
 export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
+  const t = useTranslations("trips");
+  const tc = useTranslations("common");
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getTrips().then((t) => { setTrips(t); setLoading(false); });
   }, [open]);
@@ -32,10 +36,10 @@ export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
     setBusy(tripId);
     try {
       await addLocationToTrip(tripId, locationId);
-      toast({ title: "Added to trip", variant: "success" });
+      toast({ title: t("addedToTrip"), variant: "success" });
       onOpenChange(false);
     } catch (e) {
-      toast({ title: "Failed to add", description: String(e), variant: "destructive" });
+      toast({ title: t("addToTripFailed"), description: String(e), variant: "destructive" });
     } finally {
       setBusy(null);
     }
@@ -47,7 +51,7 @@ export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Route className="h-4 w-4 text-primary" />
-            Add to Trip
+            {t("addToTripTitle")}
           </DialogTitle>
         </DialogHeader>
         {loading ? (
@@ -56,7 +60,7 @@ export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
           </div>
         ) : trips.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">
-            No trips yet. Create one from the Trips page.
+            {t("noTripsHint")}
           </p>
         ) : (
           <div className="space-y-2 max-h-[50dvh] overflow-y-auto">
@@ -76,7 +80,7 @@ export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{trip.name}</p>
-                  <p className="text-xs text-muted-foreground">{trip._count.locations} stops</p>
+                    <p className="text-xs text-muted-foreground">{trip._count.locations} {t("stops")}</p>
                 </div>
                 {busy === trip.id ? (
                   <Loader2 className="h-4 w-4 animate-spin shrink-0" />
@@ -88,7 +92,7 @@ export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
           </div>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{tc("cancel")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

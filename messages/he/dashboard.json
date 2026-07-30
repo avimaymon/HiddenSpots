@@ -1,0 +1,21 @@
+{
+  "title": "לוח בקרה",
+  "welcome": "ברוך הבא",
+  "stats": {
+    "locations": "מיקומים",
+    "visits": "ביקורים",
+    "collections": "אוספים",
+    "trips": "טיולים",
+    "favorites": "מועדפים",
+    "bucketList": "רשימת חוויות"
+  },
+  "recentVisits": "ביקורים אחרונים",
+  "favoriteSpots": "מיקומים מועדפים",
+  "noRecentVisits": "עוד לא ביקרת בשום מקום",
+  "noFavorites": "עוד אין מועדפים",
+  "viewAll": "ראה הכל",
+  "smartViews": "תצוגות חכמות",
+  "addSmartView": "הוסף תצוגה",
+  "noSmartViews": "עוד אין תצוגות חכמות",
+  "noSmartViewsHint": "שמור פילטרים נפוצים כתצוגה חכמה"
+}

@@ -10,6 +10,7 @@ export interface MapLocation {
   isFavorite: boolean;
   isVisited: boolean;
   coverPhotoUrl?: string | null;
+  visitCount?: number;
 }
 
 export interface MapViewProps {
@@ -18,9 +19,19 @@ export interface MapViewProps {
   onLocationClick: (id: string) => void;
   onMapClick?: (coords: { lat: number; lng: number }) => void;
   isAddingLocation?: boolean;
+  measureMode?: boolean;
+  measurePoints?: { lat: number; lng: number }[];
+  radiusCenter?: { lat: number; lng: number } | null;
+  radiusKm?: number | null;
   showClusters?: boolean;
   activeCollectionIds?: string[];
   className?: string;
+  /** Ordered waypoints for trip polyline */
+  tripPolyline?: { lat: number; lng: number; color: string }[];
+  /** Show visit-frequency heatmap overlay */
+  showHeatmap?: boolean;
+  /** Custom GeoJSON overlay (trails, boundaries, etc.) */
+  geojsonOverlay?: GeoJSON.FeatureCollection | null;
 }
 
 export const MAP_STYLES = {

@@ -1,0 +1,16 @@
+{
+  "installTitle": "Install HiddenSpots",
+  "installDesc": "Add to home screen for quick access, even offline",
+  "install": "Install",
+  "later": "Later",
+  "installed": "HiddenSpots installed!",
+  "offlineReady": "App ready for offline use",
+  "updateAvailable": "Update available",
+  "updateNow": "Update now",
+  "syncPending": "{count, plural, one {1 change pending sync} other {# changes pending sync}}",
+  "syncing": "Syncing changes…",
+  "synced": "All changes synced",
+  "offlineBanner": "Offline",
+  "installHint": "Add to home screen for quick field access",
+  "dismiss": "Dismiss"
+}

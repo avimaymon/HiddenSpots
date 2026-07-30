@@ -1,26 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { OfflineBanner } from "@/components/shared/OfflineBanner";
 import { OnboardingDialog } from "@/components/onboarding/OnboardingDialog";
+import { PwaInstallPrompt } from "@/components/shared/PwaInstallPrompt";
+import { WhatsNewModal } from "@/components/shared/WhatsNewModal";
+import { FeedbackDialog } from "@/components/shared/FeedbackDialog";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
+import { useSyncQueue } from "@/hooks/use-sync-queue";
+import { trackPageview } from "@/lib/analytics";
+import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 
 interface Props {
   onboarded: boolean;
 }
 
-export function ShellExtras({ onboarded }: Props) {
-  const [showOnboarding, setShowOnboarding] = useState(!onboarded);
-  useVisualViewport();
-
+function AnalyticsPageview() {
+  const pathname = usePathname();
   useEffect(() => {
-    setShowOnboarding(!onboarded);
-  }, [onboarded]);
+    if (pathname) trackPageview(pathname);
+  }, [pathname]);
+  return null;
+}
+
+export function ShellExtras({ onboarded }: Props) {
+  const [dismissed, setDismissed] = useState(false);
+  useVisualViewport();
+  useSyncQueue();
 
   return (
     <>
+      <AnalyticsPageview />
       <OfflineBanner />
-      <OnboardingDialog open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
+      <PwaInstallPrompt />
+      <WhatsNewModal />
+      <FeedbackDialog />
+      <OnboardingDialog
+        open={!onboarded && !dismissed}
+        onComplete={() => setDismissed(true)}
+      />
     </>
   );
 }

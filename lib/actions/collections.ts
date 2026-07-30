@@ -42,6 +42,9 @@ export async function getCollections() {
 export async function createCollection(data: unknown) {
   const userId = await requireAuth();
   const validated = collectionSchema.parse(data);
+  if (validated.parentId) {
+    await assertOwns(userId, validated.parentId);
+  }
   const collection = await prisma.collection.create({
     data: { ...validated, userId },
   });
@@ -65,6 +68,10 @@ export async function updateCollection(id: string, data: unknown) {
 export async function deleteCollection(id: string) {
   const userId = await requireAuth();
   await assertOwns(userId, id);
+  await prisma.collection.updateMany({
+    where: { userId, parentId: id },
+    data: { parentId: null },
+  });
   await prisma.collection.delete({ where: { id } });
   revalidateAppPaths("/collections");
 }
@@ -110,6 +117,25 @@ export async function getCollectionLocations(collectionId: string) {
       },
     },
     orderBy: { sortOrder: "asc" },
+  });
+}
+
+export async function updateCategoryAppearance(
+  id: string,
+  data: { color?: string; icon?: string }
+) {
+  const userId = await requireAuth();
+  await prisma.category.updateMany({
+    where: { id, userId },
+    data: { color: data.color, icon: data.icon },
+  });
+}
+
+export async function getUserCategories() {
+  const userId = await requireAuth();
+  return prisma.category.findMany({
+    where: { OR: [{ userId }, { isSystem: true }] },
+    orderBy: [{ isSystem: "asc" }, { name: "asc" }],
   });
 }
 

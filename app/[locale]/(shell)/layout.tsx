@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/shared/Sidebar";
 import { MobileNav } from "@/components/shared/MobileNav";
 import { CommandPalette } from "@/components/shared/CommandPalette";
 import { ShellExtras } from "@/components/shared/ShellExtras";
+import { PreferencesApplier } from "@/components/shared/PreferencesApplier";
 import { getUserPreferences } from "@/lib/actions/settings";
 
 export default async function ProtectedLayout({
@@ -20,9 +21,10 @@ export default async function ProtectedLayout({
 
   return (
     <div className="flex app-height overflow-hidden bg-background">
+      <PreferencesApplier fontSize={prefs?.fontSize ?? "default"} theme={prefs?.theme ?? "system"} />
       <ShellExtras onboarded={prefs?.onboarded ?? false} />
       <Sidebar user={session.user} />
-      <main className="flex-1 flex flex-col overflow-hidden min-w-0 md:pb-0 pb-nav">
+      <main id="main-content" className="flex-1 flex flex-col overflow-hidden min-w-0 md:pb-0 pb-nav">
         {children}
       </main>
       <MobileNav />

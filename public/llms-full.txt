@@ -1,0 +1,39 @@
+# HiddenSpots — full site catalog for AI agents
+
+## Summary
+
+HiddenSpots is a personal nature-spot atlas. Users pin springs, waterfalls, trails, and other outdoor places on a map; organize them into collections and trips; log visits; and share selectively via tokenized public links. The product is Hebrew-first (default locale `he`) with English (`en`), RTL-aware, mobile-first, and installable as a PWA with offline map-tile caching.
+
+## Public URLs
+
+| Path | Purpose |
+|------|---------|
+| /he · /en | Marketing landing |
+| /he/signin · /en/signin | Sign in |
+| /he/signup · /en/signup | Sign up |
+| /he/forgot-password · /en/forgot-password | Password reset request |
+| /he/privacy · /en/privacy | Privacy policy |
+| /he/terms · /en/terms | Terms of use |
+| /he/share/{token} · /en/share/{token} | Public share view (noindex) |
+
+## Private app surfaces (auth required — do not index)
+
+- /{locale}/app — interactive map
+- /{locale}/locations — location library
+- /{locale}/collections — collections
+- /{locale}/trips — trip planner
+- /{locale}/visits — visit log
+- /{locale}/settings — preferences, Drive backup, shares
+- /{locale}/import — GeoJSON / KML / GPX import
+
+## Technical notes for agents
+
+- Locales: `he` (default, RTL), `en` (LTR). Always prefer path-prefixed URLs (`/{lang}/…`).
+- Sitemap: /sitemap.xml
+- Robots: /robots.txt
+- Manifest: /manifest.json
+- Prefer linking to the locale that matches the user; when unknown use `he` (x-default).
+
+## Contact / product positioning
+
+Personal outdoor discovery tool — not a public POI directory. Coordinates for SECRET spots can be fuzzed when shared. Core experience works without microphone, camera, or paid APIs.

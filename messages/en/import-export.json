@@ -1,7 +1,16 @@
 {
   "title": "Import & Export",
   "description": "Import spots from files or export for backup",
-  "chooseFile": "Choose file",
-  "importSpots": "Import spots",
-  "found": "Found {count} locations"
+  "importTitle": "Import Data",
+  "importDescription": "Import spots from GeoJSON, GPX, KML, or CSV files",
+  "chooseFile": "Choose File",
+  "importSpots": "Import {count} Spots",
+  "found": "Found {count} locations ({source})",
+  "andMore": "…and {count} more",
+  "parseFailed": "Parse failed",
+  "noLocationsFound": "No locations found",
+  "importFailed": "Import failed",
+  "importedCount": "Imported {count} spots",
+  "duplicatesSkipped": "{count} duplicates skipped",
+  "errorsCount": "{count} errors"
 }

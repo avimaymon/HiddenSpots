@@ -1,0 +1,16 @@
+{
+  "installTitle": "התקן את HiddenSpots",
+  "installDesc": "הוסף לדף הבית לגישה מהירה גם ללא אינטרנט",
+  "install": "התקן",
+  "later": "אחר כך",
+  "installed": "HiddenSpots הותקן!",
+  "offlineReady": "האפליקציה מוכנה לשימוש ללא אינטרנט",
+  "updateAvailable": "עדכון זמין",
+  "updateNow": "עדכן עכשיו",
+  "syncPending": "{count, plural, one {שינוי אחד ממתין לסנכרון} other {# שינויים ממתינים לסנכרון}}",
+  "syncing": "מסנכרן שינויים…",
+  "synced": "כל השינויים סונכרנו",
+  "offlineBanner": "אין חיבור",
+  "installHint": "הוסף למסך הבית לגישה מהירה בשטח",
+  "dismiss": "סגור"
+}

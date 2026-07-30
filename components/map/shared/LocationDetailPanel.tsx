@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { getLocationById, toggleFavorite, toggleBucketList, deleteLocation } from "@/lib/actions/locations";
-import { createVisit } from "@/lib/actions/visits";
 import { EditLocationDialog } from "@/components/locations/EditLocationDialog";
 import { AddToCollectionDialog } from "@/components/locations/AddToCollectionDialog";
 import { AddToTripDialog } from "@/components/locations/AddToTripDialog";
 import { NavigateShareDialog } from "@/components/shared/NavigateShareDialog";
 import { DbShareDialog } from "@/components/shared/DbShareDialog";
+import { LogVisitDialog } from "@/components/visits/LogVisitDialog";
 import { QuickNavButtons } from "@/components/shared/QuickNavButtons";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { copyToClipboard } from "@/lib/navigation/external-links";
@@ -17,13 +18,18 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   X, Heart, Bookmark, Eye, Edit2, Trash2, MapPin, Star,
-  Loader2, Camera, ExternalLink, Navigation, Share2, Copy, Check, Footprints,
-  FolderPlus, Route,
+  Camera, ExternalLink, Navigation, Share2, Copy, Check, Footprints,
+  FolderPlus, Route, AlertTriangle, Lightbulb,
 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { SolarInfoCard } from "@/components/locations/SolarInfoCard";
+import { ExternalMapsButtons } from "@/components/locations/ExternalMapsButtons";
+import { AirQualityCard } from "@/components/locations/AirQualityCard";
+import { NearestParking } from "@/components/locations/NearestParking";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Props {
   locationId: string;
@@ -34,6 +40,9 @@ interface Props {
 type LocationDetail = Awaited<ReturnType<typeof getLocationById>>;
 
 export function LocationDetailPanel({ locationId, onClose, categories = [] }: Props) {
+  const t = useTranslations("locations");
+  const tv = useTranslations("visits");
+  const tc = useTranslations("common");
   const [location, setLocation] = useState<LocationDetail>(null);
   const [loading, setLoading] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
@@ -41,11 +50,12 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [tripOpen, setTripOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [visitOpen, setVisitOpen] = useState(false);
   const [copiedCoords, setCopiedCoords] = useState(false);
-  const [visitLoading, setVisitLoading] = useState(false);
   const { distanceTo } = useGeolocation(true);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getLocationById(locationId).then((loc) => {
       setLocation(loc);
@@ -55,9 +65,20 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
 
   if (loading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-3">
-        <Loader2 className="h-7 w-7 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading spot…</p>
+      <div className="flex flex-col h-full">
+        <Skeleton className="h-52 w-full rounded-none" />
+        <div className="p-4 space-y-3 flex-1">
+          <Skeleton className="h-6 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+          <div className="flex gap-2 pt-1">
+            <Skeleton className="h-6 w-16 rounded-full" />
+            <Skeleton className="h-6 w-12 rounded-full" />
+          </div>
+          <div className="pt-2 space-y-2">
+            <Skeleton className="h-10 w-full rounded-xl" />
+            <Skeleton className="h-10 w-full rounded-xl" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -65,10 +86,12 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
   if (!location) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 p-6 text-center">
-        <div className="h-14 w-14 rounded-2xl bg-muted flex items-center justify-center text-2xl">🌿</div>
-        <p className="text-muted-foreground text-sm">Location not found</p>
+        <div className="h-14 w-14 rounded-2xl bg-muted flex items-center justify-center">
+          <MapPin className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <p className="text-muted-foreground text-sm">{t("notFound")}</p>
         <Button variant="outline" size="sm" onClick={onClose} className="rounded-xl">
-          Close
+          {tc("close")}
         </Button>
       </div>
     );
@@ -87,39 +110,41 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this location?")) return;
+    if (!confirm(t("deleteConfirm"))) return;
     await deleteLocation(locationId);
-    toast({ title: "Location deleted", variant: "destructive" });
+    toast({
+      title: t("deleted"),
+      variant: "destructive",
+      action: {
+        label: "Undo",
+        onClick: async () => {
+          const { restoreLocation } = await import("@/lib/actions/locations");
+          await restoreLocation(locationId);
+          toast({ title: "Restored", variant: "success" });
+        },
+      },
+    });
     onClose();
   }
 
-  async function handleQuickVisit() {
-    setVisitLoading(true);
-    try {
-      await createVisit({ locationId, visitedAt: new Date().toISOString() });
-      setLocation((l) =>
-        l
-          ? {
-              ...l,
-              isVisited: true,
-              visitCount: (l.visitCount ?? 0) + 1,
-              lastVisitedAt: new Date(),
-            }
-          : l
-      );
-      toast({ title: "Visit logged!", description: "Marked as visited today", variant: "success" });
-    } catch {
-      toast({ title: "Failed to log visit", variant: "destructive" });
-    } finally {
-      setVisitLoading(false);
-    }
+  function handleVisitLogged() {
+    setLocation((l) =>
+      l
+        ? {
+            ...l,
+            isVisited: true,
+            visitCount: (l.visitCount ?? 0) + 1,
+            lastVisitedAt: new Date(),
+          }
+        : l
+    );
   }
 
   async function handleCopyCoords() {
     const ok = await copyToClipboard(`${location!.latitude}, ${location!.longitude}`);
     if (ok) {
       setCopiedCoords(true);
-      toast({ title: "Coordinates copied", variant: "success" });
+      toast({ title: t("coordsCopied"), variant: "success" });
       setTimeout(() => setCopiedCoords(false), 2000);
     }
   }
@@ -186,15 +211,11 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
           <Navigation className="h-4 w-4" />
         </ActionBtn>
         <ActionBtn
-          title="Log visit"
-          onClick={handleQuickVisit}
+          title={tv("logVisit")}
+          onClick={() => setVisitOpen(true)}
           className={cn(location.isVisited && "text-green-600 bg-green-500/10")}
         >
-          {visitLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Footprints className="h-4 w-4" />
-          )}
+          <Footprints className="h-4 w-4" />
         </ActionBtn>
         <ActionBtn title="Add to collection" onClick={() => setCollectionOpen(true)}>
           <FolderPlus className="h-4 w-4" />
@@ -248,20 +269,36 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
             ))}
           </div>
 
+          {/* Hazard alert */}
+          {location.hazardNote && (!location.hazardExpiresAt || new Date(location.hazardExpiresAt) > new Date()) && (
+            <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm">
+              <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+              <p className="text-destructive text-xs leading-relaxed">{location.hazardNote}</p>
+            </div>
+          )}
+
           {location.description && (
             <p className="text-sm text-muted-foreground leading-relaxed">
               {location.description}
             </p>
           )}
 
+          {/* Tips */}
+          {(location as { tips?: string | null }).tips && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3 py-2.5">
+              <Lightbulb className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-foreground/80 leading-relaxed">{(location as { tips?: string | null }).tips}</p>
+            </div>
+          )}
+
           {/* Quick navigate */}
           <div className="rounded-xl border border-border/50 bg-muted/20 p-3 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                Navigate
+                {t("navigate")}
               </p>
               {distance && (
-                <span className="text-xs font-semibold text-primary">{distance} away</span>
+                <span className="text-xs font-semibold text-primary">{distance}</span>
               )}
             </div>
             <QuickNavButtons
@@ -269,15 +306,7 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
               size="md"
               onMore={() => setShareOpen(true)}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full rounded-xl h-9"
-              onClick={() => setShareOpen(true)}
-            >
-              <Share2 className="h-3.5 w-3.5" />
-              Waze · Google Maps · Apple Maps · More
-            </Button>
+            <ExternalMapsButtons latitude={location.latitude} longitude={location.longitude} title={location.title} />
           </div>
 
           <div className="flex items-start gap-2 rounded-xl bg-muted/40 border border-border/40 px-3 py-2.5 text-xs">
@@ -329,7 +358,7 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
               <div>
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
                   <Camera className="h-3.5 w-3.5" />
-                  Photos ({location.photos.length})
+                  {t("photos")} ({location.photos.length})
                 </p>
                 <div className="grid grid-cols-3 gap-1.5">
                   {location.photos.slice(0, 6).map((photo) => (
@@ -351,7 +380,7 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
               <div>
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
                   <Eye className="h-3.5 w-3.5" />
-                  Visits ({location.visits.length})
+                  {t("visits")} ({location.visits.length})
                 </p>
                 <div className="space-y-2">
                   {location.visits.slice(0, 3).map((visit) => (
@@ -399,6 +428,48 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
             </>
           )}
 
+          <SolarInfoCard latitude={location.latitude} longitude={location.longitude} />
+          <AirQualityCard latitude={location.latitude} longitude={location.longitude} />
+          <NearestParking latitude={location.latitude} longitude={location.longitude} />
+
+          <div className="flex flex-wrap gap-2 pb-1">
+            <a
+              href={`https://www.inaturalist.org/observations?lat=${location.latitude}&lng=${location.longitude}&radius=1&view=map`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors text-xs font-medium"
+            >
+              🌿 View species on iNaturalist
+            </a>
+          </div>
+
+          <div className="flex gap-2 pb-1">
+            <button
+              onClick={() => {
+                // ponytail: use window.print with a temporary printable DOM
+                const win = window.open("", "_blank");
+                if (!win) return;
+                win.document.write(`<!DOCTYPE html><html><head><title>${location.title}</title><style>
+                  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 2rem auto; padding: 1rem; }
+                  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+                  .meta { color: #666; font-size: 0.85rem; margin-bottom: 1rem; }
+                  .coords { font-family: monospace; background: #f5f5f5; padding: 0.5rem; border-radius: 6px; font-size: 0.8rem; }
+                  @media print { body { margin: 0; } }
+                </style></head><body>
+                <h1>${location.title}</h1>
+                <div class="meta">${location.description ?? ""}</div>
+                <div class="coords">📍 ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}</div>
+                <p style="margin-top:1rem;font-size:0.8rem;color:#888">Printed from HiddenSpots · ${new Date().toLocaleDateString()}</p>
+                <script>window.print();window.close();</script>
+                </body></html>`);
+                win.document.close();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors text-xs font-medium"
+            >
+              🖨️ Print spot card
+            </button>
+          </div>
+
           <p className="text-[11px] text-muted-foreground pb-2">
             Added {format(new Date(location.createdAt), "MMM d, yyyy")}
             {location.updatedAt > location.createdAt &&
@@ -443,6 +514,15 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
           }}
         />
       )}
+
+      <LogVisitDialog
+        open={visitOpen}
+        onOpenChange={setVisitOpen}
+        locationId={locationId}
+        latitude={location.latitude}
+        longitude={location.longitude}
+        onLogged={handleVisitLogged}
+      />
     </div>
   );
 }

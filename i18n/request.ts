@@ -18,6 +18,8 @@ const NAMESPACES = [
   "errors",
   "validation",
   "pwa",
+  "legal",
+  "command",
 ] as const;
 
 async function loadMessages(locale: string) {
@@ -27,6 +29,10 @@ async function loadMessages(locale: string) {
         const mod = await import(`../messages/${locale}/${ns}.json`);
         return [ns, mod.default] as const;
       } catch {
+        // ponytail: fail loudly in dev so missing translations are caught early
+        if (process.env.NODE_ENV === "development") {
+          console.warn(`[i18n] Missing namespace "${ns}" for locale "${locale}"`);
+        }
         return [ns, {}] as const;
       }
     })

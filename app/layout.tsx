@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Plus_Jakarta_Sans, JetBrains_Mono, Heebo } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
@@ -7,6 +8,9 @@ import { ThemeProvider } from "@/components/shared/ThemeProvider";
 import { QueryProvider } from "@/components/shared/QueryProvider";
 import { Toaster } from "@/components/ui/toaster";
 import { ServiceWorkerRegister } from "@/components/shared/ServiceWorkerRegister";
+import { ClientErrorBoundary } from "@/components/shared/ClientErrorBoundary";
+import { SkipToContent } from "@/components/shared/SkipToContent";
+import { Analytics } from "@/components/shared/Analytics";
 
 const sans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -34,8 +38,8 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Locale-specific title/description/OG live in app/[locale]/layout.tsx
   title: { default: "HiddenSpots", template: "%s — HiddenSpots" },
-  description: "Your personal atlas of nature's hidden gems",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -43,8 +47,11 @@ export const metadata: Metadata = {
     title: "HiddenSpots",
   },
   icons: {
-    icon: "/icons/icon.svg",
-    apple: "/icons/icon.svg",
+    icon: [
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/icons/icon-192.png",
   },
 };
 
@@ -55,7 +62,7 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  maximumScale: 5,
   viewportFit: "cover",
 };
 
@@ -76,9 +83,13 @@ export default async function RootLayout({
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider>
             <QueryProvider>
-              {children}
+              <SkipToContent />
+              <ClientErrorBoundary>{children}</ClientErrorBoundary>
               <Toaster />
               <ServiceWorkerRegister />
+              <Suspense fallback={null}>
+                <Analytics />
+              </Suspense>
             </QueryProvider>
           </ThemeProvider>
         </NextIntlClientProvider>

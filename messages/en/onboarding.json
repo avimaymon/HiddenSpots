@@ -3,6 +3,18 @@
   "step1": "Save your favorite nature spots on the map",
   "step2": "Organize in collections and plan trips",
   "step3": "Share with friends or keep private",
+  "step4": "Back up all your spots to Google Drive — favorites, tags, and privacy settings included. Connect anytime in Settings.",
+  "step4Title": "Your spots, safely backed up",
   "getStarted": "Get started",
-  "skip": "Skip"
+  "skip": "Skip",
+  "signIn": "Sign in",
+  "landingHeadline": "Your personal atlas of nature spots",
+  "landingSub": "Save springs, waterfalls, and trails — Hebrew-first, map-first, field-ready offline.",
+  "featureMap": "Map-first",
+  "featureMapDesc": "Three map providers, clustering, tap or GPS to add.",
+  "featureShare": "Safe sharing",
+  "featureShareDesc": "Expiring links and SECRET spots with fuzzed coordinates.",
+  "featureField": "Field-ready",
+  "featureFieldDesc": "PWA, offline cache, and home-screen install.",
+  "landingFooter": "Hebrew-first · mobile-first · private by default"
 }

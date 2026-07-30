@@ -5,6 +5,9 @@ import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
 import { activeLocationWhere } from "@/lib/db/filters";
 import { locationSchema } from "@/lib/validations/schemas";
+import { assertCanEditLocation } from "@/lib/permissions/share-access";
+import { parseHebrewQuery, hasNlFilters } from "@/lib/search/hebrew-nl";
+import type { Prisma } from "@prisma/client";
 
 async function requireAuth() {
   const session = await auth();
@@ -23,15 +26,56 @@ export async function createLocation(data: unknown) {
   return location;
 }
 
+/** Near-duplicate check before create (~50m or same title). */
+export async function findNearbyDuplicates(input: {
+  title: string;
+  latitude: number;
+  longitude: number;
+}) {
+  const userId = await requireAuth();
+  const existing = await prisma.location.findMany({
+    where: { userId, ...activeLocationWhere },
+    select: { id: true, title: true, latitude: true, longitude: true },
+    take: 500,
+  });
+  const titleKey = input.title.trim().toLowerCase();
+  const hits = existing.filter((loc) => {
+    if (loc.title.trim().toLowerCase() === titleKey) return true;
+    const dLat = (loc.latitude - input.latitude) * 111_320;
+    const dLng =
+      (loc.longitude - input.longitude) *
+      111_320 *
+      Math.cos((input.latitude * Math.PI) / 180);
+    return Math.hypot(dLat, dLng) < 50;
+  });
+  return hits.slice(0, 5);
+}
+
 export async function updateLocation(id: string, data: unknown) {
   const userId = await requireAuth();
-  await assertOwns(userId, id);
+  // Owner OR share with EDIT/MANAGE
+  try {
+    await assertOwns(userId, id);
+  } catch {
+    await assertCanEditLocation(id, userId);
+  }
   const validated = locationSchema.partial().parse(data);
+
+  // Record before-state for history
+  const before = await prisma.location.findUnique({ where: { id } });
+
   const location = await prisma.location.update({
     where: { id },
     data: validated,
     include: { category: true, photos: true, tags: { include: { tag: true } } },
   });
+
+  if (before) {
+    await prisma.locationHistory.create({
+      data: { locationId: id, userId, snapshot: JSON.parse(JSON.stringify(before)) },
+    });
+  }
+
   revalidateAppPaths();
   revalidateAppPaths(`/locations/${id}`);
   return location;
@@ -45,6 +89,41 @@ export async function deleteLocation(id: string) {
     data: { deletedAt: new Date() },
   });
   revalidateAppPaths("/locations");
+}
+
+export async function getDeletedLocations() {
+  const userId = await requireAuth();
+  return prisma.location.findMany({
+    where: { userId, deletedAt: { not: null } },
+    include: {
+      category: true,
+      photos: { where: { isPrimary: true }, take: 1 },
+    },
+    orderBy: { deletedAt: "desc" },
+  });
+}
+
+export async function restoreLocation(id: string) {
+  const userId = await requireAuth();
+  const loc = await prisma.location.findFirst({
+    where: { id, userId, deletedAt: { not: null } },
+  });
+  if (!loc) throw new Error("Not found");
+  await prisma.location.update({
+    where: { id },
+    data: { deletedAt: null },
+  });
+  revalidateAppPaths("/locations", "/settings");
+}
+
+export async function permanentlyDeleteLocation(id: string) {
+  const userId = await requireAuth();
+  const loc = await prisma.location.findFirst({
+    where: { id, userId, deletedAt: { not: null } },
+  });
+  if (!loc) throw new Error("Not found");
+  await prisma.location.delete({ where: { id } });
+  revalidateAppPaths("/locations", "/settings");
 }
 
 export async function toggleFavorite(id: string) {
@@ -105,6 +184,115 @@ export async function getLocations(filters?: {
     },
     orderBy: { updatedAt: "desc" },
   });
+}
+
+export async function findDuplicateSpotsAction() {
+  const userId = await requireAuth();
+  const locs = await prisma.location.findMany({
+    where: { userId, ...activeLocationWhere },
+    select: { id: true, title: true, latitude: true, longitude: true },
+  });
+  const groups: (typeof locs)[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < locs.length; i++) {
+    if (seen.has(locs[i].id)) continue;
+    const group = [locs[i]];
+    for (let j = i + 1; j < locs.length; j++) {
+      if (seen.has(locs[j].id)) continue;
+      const titleMatch = locs[i].title.toLowerCase().trim() === locs[j].title.toLowerCase().trim();
+      const dLat = (locs[i].latitude - locs[j].latitude) * 111_320;
+      const dLng = (locs[i].longitude - locs[j].longitude) * 111_320 * Math.cos((locs[i].latitude * Math.PI) / 180);
+      const dist = Math.hypot(dLat, dLng);
+      if (titleMatch || dist < 50) {
+        group.push(locs[j]);
+        seen.add(locs[j].id);
+      }
+    }
+    if (group.length > 1) {
+      groups.push(group);
+      seen.add(locs[i].id);
+    }
+  }
+  return groups;
+}
+
+export async function mergeLocations(keepId: string, deleteId: string) {
+  const userId = await requireAuth();
+  await assertOwns(userId, keepId);
+  await assertOwns(userId, deleteId);
+  // Reassign visits and photos before soft-deleting the duplicate
+  await prisma.visit.updateMany({ where: { locationId: deleteId }, data: { locationId: keepId } });
+  await prisma.locationPhoto.updateMany({ where: { locationId: deleteId }, data: { locationId: keepId } });
+  await prisma.collectionLocation.deleteMany({ where: { locationId: deleteId } });
+  await prisma.location.update({ where: { id: deleteId }, data: { deletedAt: new Date() } });
+  revalidateAppPaths("/locations", "/settings");
+}
+
+export async function searchLocationsQuick(query: string) {
+  const userId = await requireAuth();
+  const nl = parseHebrewQuery(query);
+  const where: Prisma.LocationWhereInput = {
+    userId,
+    ...activeLocationWhere,
+  };
+
+  if (hasNlFilters(nl)) {
+    if (nl.categoryNameEn || nl.categoryNameHe) {
+      where.category = {
+        OR: [
+          ...(nl.categoryNameEn ? [{ name: nl.categoryNameEn }] : []),
+          ...(nl.categoryNameHe ? [{ nameHe: nl.categoryNameHe }] : []),
+        ],
+      };
+    }
+    if (nl.isFavorite === true) where.isFavorite = true;
+    if (nl.isBucketList === true) where.isBucketList = true;
+    if (nl.isVisited !== undefined) where.isVisited = nl.isVisited;
+    if (nl.isDogFriendly) where.isDogFriendly = true;
+    if (nl.isFamilyFriendly) where.isFamilyFriendly = true;
+    if (nl.isCampingAllowed) where.isCampingAllowed = true;
+    if (nl.hasParking) where.hasParking = true;
+    if (nl.hasWater) where.hasWater = true;
+    if (nl.hasShade) where.hasShade = true;
+    if (nl.text) {
+      where.OR = [
+        { title: { contains: nl.text, mode: "insensitive" } },
+        { description: { contains: nl.text, mode: "insensitive" } },
+        { address: { contains: nl.text, mode: "insensitive" } },
+      ];
+    }
+  } else {
+    where.OR = [
+      { title: { contains: query, mode: "insensitive" } },
+      { description: { contains: query, mode: "insensitive" } },
+      { address: { contains: query, mode: "insensitive" } },
+    ];
+  }
+
+  return prisma.location.findMany({
+    where,
+    select: {
+      id: true,
+      title: true,
+      category: { select: { name: true, color: true } },
+    },
+    take: 8,
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getRandomLocation() {
+  const userId = await requireAuth();
+  const count = await prisma.location.count({ where: { userId, ...activeLocationWhere } });
+  if (!count) return null;
+  const skip = Math.floor(Math.random() * count);
+  const results = await prisma.location.findMany({
+    where: { userId, ...activeLocationWhere },
+    select: { id: true, title: true, latitude: true, longitude: true },
+    take: 1,
+    skip,
+  });
+  return results[0] ?? null;
 }
 
 export async function getLocationById(id: string) {
@@ -178,6 +366,16 @@ export async function removeTagFromLocation(locationId: string, tagId: string) {
     where: { locationId_tagId: { locationId, tagId } },
   });
   revalidateAppPaths(`/locations/${locationId}`);
+}
+
+export async function getLocationHistory(locationId: string) {
+  const userId = await requireAuth();
+  await assertOwns(userId, locationId);
+  return prisma.locationHistory.findMany({
+    where: { locationId },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
 }
 
 async function assertOwns(userId: string, locationId: string) {

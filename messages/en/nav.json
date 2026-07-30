@@ -9,6 +9,8 @@
   "import": "Import",
   "export": "Export",
   "settings": "Settings",
+  "more": "More",
+  "yearReview": "Year in Review",
   "signOut": "Sign out",
   "addSpot": "Add spot",
   "search": "Search locations…"

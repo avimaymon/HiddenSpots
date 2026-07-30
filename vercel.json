@@ -4,6 +4,12 @@
   "buildCommand": "npm run build:deploy",
   "installCommand": "npm ci",
   "regions": ["fra1"],
+  "crons": [
+    {
+      "path": "/api/cron/drive-backup",
+      "schedule": "0 3 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",

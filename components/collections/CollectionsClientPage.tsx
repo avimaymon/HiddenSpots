@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "@/i18n/navigation";
 import Image from "next/image";
 import { Plus, FolderOpen, MapPin, Trash2, Loader2, Share2 } from "lucide-react";
@@ -10,53 +10,92 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createCollection, deleteCollection } from "@/lib/actions/collections";
 import { toast } from "@/hooks/use-toast";
+import { useTranslations } from "next-intl";
 
 type Collection = Awaited<ReturnType<typeof import("@/lib/actions/collections").getCollections>>[number];
 
 const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4", "#a855f7"];
+const NO_PARENT = "__none__";
 
 interface Props {
   initialCollections: Collection[];
 }
 
+type FlatRow = Collection & { depth: number };
+
+function flattenCollections(collections: Collection[]): FlatRow[] {
+  const byParent = new Map<string | null, Collection[]>();
+  for (const col of collections) {
+    const key = col.parentId ?? null;
+    const list = byParent.get(key) ?? [];
+    list.push(col);
+    byParent.set(key, list);
+  }
+  const out: FlatRow[] = [];
+  function walk(parentId: string | null, depth: number) {
+    for (const col of byParent.get(parentId) ?? []) {
+      out.push({ ...col, depth });
+      walk(col.id, depth + 1);
+    }
+  }
+  walk(null, 0);
+  // Orphans (parent missing from list) still show at root
+  const seen = new Set(out.map((c) => c.id));
+  for (const col of collections) {
+    if (!seen.has(col.id)) out.push({ ...col, depth: 0 });
+  }
+  return out;
+}
+
 export function CollectionsClientPage({ initialCollections }: Props) {
+  const t = useTranslations("collections");
+  const tc = useTranslations("common");
   const [collections, setCollections] = useState(initialCollections);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
+  const [parentId, setParentId] = useState<string>(NO_PARENT);
   const [loading, setLoading] = useState(false);
   const [shareCol, setShareCol] = useState<{ id: string; name: string } | null>(null);
+
+  const flat = useMemo(() => flattenCollections(collections), [collections]);
 
   async function handleCreate() {
     if (!name.trim()) return;
     setLoading(true);
     try {
-      const col = await createCollection({ name: name.trim(), color });
+      const col = await createCollection({
+        name: name.trim(),
+        color,
+        parentId: parentId === NO_PARENT ? null : parentId,
+      });
       setCollections((c) => [...c, { ...col, _count: { locations: 0 }, locations: [] }]);
       setOpen(false);
       setName("");
-      toast({ title: "Collection created", variant: "success" });
+      setParentId(NO_PARENT);
+      toast({ title: t("created"), variant: "success" });
     } catch {
-      toast({ title: "Failed to create", variant: "destructive" });
+      toast({ title: t("createFailed"), variant: "destructive" });
     } finally {
       setLoading(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this collection? Spots won't be deleted.")) return;
+    if (!confirm(t("deleteConfirm"))) return;
     await deleteCollection(id);
-    setCollections((c) => c.filter((x) => x.id !== id));
-    toast({ title: "Collection deleted" });
+    setCollections((c) => c.filter((x) => x.id !== id && x.parentId !== id));
+    toast({ title: t("deleted") });
   }
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <PageHeader title="Collections" description={`${collections.length} lists`}>
+      <PageHeader title={t("title")} description={t("description", { count: collections.length })}>
         <Button size="sm" className="rounded-xl" onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4" /> New
+          <Plus className="h-4 w-4" /> {t("createNew")}
         </Button>
       </PageHeader>
 
@@ -66,18 +105,19 @@ export function CollectionsClientPage({ initialCollections }: Props) {
             <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
               <FolderOpen className="h-8 w-8 text-primary" />
             </div>
-            <p className="font-semibold">No collections yet</p>
-            <p className="text-sm text-muted-foreground max-w-xs">Group spots into themed lists — family trips, waterfalls, camping…</p>
+            <p className="font-semibold">{t("empty")}</p>
+            <p className="text-sm text-muted-foreground max-w-xs">{t("emptyHint")}</p>
             <Button className="rounded-xl" onClick={() => setOpen(true)}>
-              <Plus className="h-4 w-4" /> Create Collection
+              <Plus className="h-4 w-4" /> {t("createCollection")}
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {collections.map((col) => (
+          <div className="flex flex-col gap-3 max-w-2xl">
+            {flat.map((col) => (
               <div
                 key={col.id}
                 className="group rounded-2xl border border-border/50 bg-card overflow-hidden hover:border-primary/30 hover:shadow-lg transition-all"
+                style={{ marginInlineStart: col.depth * 20 }}
               >
                 <Link href={`/app?collection=${col.id}`} className="block p-4">
                   <div className="flex items-start gap-3">
@@ -88,9 +128,12 @@ export function CollectionsClientPage({ initialCollections }: Props) {
                       <FolderOpen className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold truncate">{col.name}</p>
+                      <p className="font-bold truncate">
+                        {col.depth > 0 ? `${"— ".repeat(col.depth)}${col.name}` : col.name}
+                      </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {col._count.locations} spots
+                        {col._count.locations} {t("spots")}
+                        {col.depth > 0 ? ` · ${t("nestedFolder")}` : ""}
                       </p>
                     </div>
                   </div>
@@ -136,15 +179,38 @@ export function CollectionsClientPage({ initialCollections }: Props) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New Collection</DialogTitle>
+            <DialogTitle>{t("createTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Summer waterfalls…" className="h-11" />
+              <Label>{t("fieldName")}</Label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t("fieldNamePlaceholder")}
+                className="h-11"
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                autoFocus
+              />
             </div>
             <div className="space-y-2">
-              <Label>Color</Label>
+              <Label>{t("fieldParent")}</Label>
+              <Select value={parentId} onValueChange={setParentId}>
+                <SelectTrigger className="rounded-xl h-11">
+                  <SelectValue placeholder={t("fieldParentNone")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PARENT}>{t("fieldParentNone")}</SelectItem>
+                  {collections.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("fieldColor")}</Label>
               <div className="flex gap-2">
                 {COLORS.map((c) => (
                   <button
@@ -162,10 +228,10 @@ export function CollectionsClientPage({ initialCollections }: Props) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{tc("cancel")}</Button>
             <Button onClick={handleCreate} disabled={loading || !name.trim()}>
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create
+              {tc("create")}
             </Button>
           </DialogFooter>
         </DialogContent>

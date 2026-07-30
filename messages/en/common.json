@@ -19,5 +19,13 @@
   "done": "Done",
   "view": "View",
   "create": "Create",
-  "offline": "Offline — changes will sync when you reconnect"
+  "offline": "Offline — changes will sync when you reconnect",
+  "skipToContent": "Skip to content",
+  "feedback": "Feedback",
+  "feedbackHint": "Found a field bug? Have an idea? Tell us in a few words.",
+  "feedbackPlaceholder": "What should we improve?",
+  "sendFeedback": "Send feedback",
+  "feedbackThanks": "Thanks — feedback received",
+  "feedbackFailed": "Could not send feedback",
+  "sending": "Sending…"
 }

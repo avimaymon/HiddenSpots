@@ -10,7 +10,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Route, LayoutDashboard, Settings, Eye, Upload } from "lucide-react";
+import { Route, LayoutDashboard, Settings, Eye, Upload, CalendarDays } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 const MAIN_NAV = [
@@ -25,6 +25,7 @@ const MORE_NAV = [
   { href: "/dashboard", icon: LayoutDashboard, labelKey: "dashboard" as const },
   { href: "/settings", icon: Settings, labelKey: "settings" as const },
   { href: "/import", icon: Upload, labelKey: "import" as const },
+  { href: "/year-review", icon: CalendarDays, labelKey: "yearReview" as const },
 ];
 
 export function MobileNav() {
@@ -33,7 +34,7 @@ export function MobileNav() {
 
   return (
     <>
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 glass-strong border-t border-border/50 safe-area-pb">
+      <nav className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-40 glass-strong border-t border-border/50 safe-area-pb no-print">
         <div
           className="flex items-stretch justify-around px-1"
           style={{ minHeight: "var(--nav-height)" }}
@@ -55,7 +56,7 @@ export function MobileNav() {
                   <span className="absolute top-1 h-1 w-8 rounded-full bg-primary" />
                 )}
                 <Icon className={cn("h-5 w-5", active && "drop-shadow-sm")} />
-                <span className="text-[10px] font-semibold tracking-wide">{label}</span>
+                <span className="nav-label text-[10px] font-semibold tracking-wide">{label}</span>
               </Link>
             );
           })}
@@ -71,12 +72,12 @@ export function MobileNav() {
                 )}
               >
                 <MoreHorizontal className="h-5 w-5" />
-                <span className="text-[10px] font-semibold tracking-wide">More</span>
+                <span className="nav-label text-[10px] font-semibold tracking-wide">{t("more")}</span>
               </button>
             </SheetTrigger>
             <SheetContent side="bottom" className="rounded-t-2xl pb-safe">
               <SheetHeader className="pb-4">
-                <SheetTitle className="text-left font-display">More</SheetTitle>
+                <SheetTitle className="text-start font-display">{t("more")}</SheetTitle>
               </SheetHeader>
               <div className="grid grid-cols-2 gap-2 pb-4">
                 {MORE_NAV.map(({ href, icon: Icon, labelKey }) => (

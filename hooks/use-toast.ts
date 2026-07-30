@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 type ToastVariant = "default" | "destructive" | "success";
 
@@ -9,6 +9,7 @@ interface Toast {
   title?: string;
   description?: string;
   variant?: ToastVariant;
+  action?: { label: string; onClick: () => void };
 }
 
 let listeners: Array<(toasts: Toast[]) => void> = [];
@@ -22,6 +23,11 @@ export function toast(opts: Omit<Toast, "id">) {
   const id = Math.random().toString(36).slice(2);
   toastState = [...toastState, { id, ...opts }];
   emitChange();
+  // Haptic on success/destructive
+  if (typeof navigator !== "undefined" && navigator.vibrate) {
+    if (opts.variant === "success") navigator.vibrate(40);
+    else if (opts.variant === "destructive") navigator.vibrate([30, 30, 30]);
+  }
   setTimeout(() => {
     toastState = toastState.filter((t) => t.id !== id);
     emitChange();
@@ -29,19 +35,14 @@ export function toast(opts: Omit<Toast, "id">) {
 }
 
 export function useToast() {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>(() => [...toastState]);
 
-  const subscribe = useCallback((listener: (t: Toast[]) => void) => {
-    listeners.push(listener);
+  useEffect(() => {
+    listeners.push(setToasts);
     return () => {
-      listeners = listeners.filter((l) => l !== listener);
+      listeners = listeners.filter((l) => l !== setToasts);
     };
   }, []);
-
-  useState(() => {
-    const unsub = subscribe(setToasts);
-    return unsub;
-  });
 
   const dismiss = useCallback((id: string) => {
     toastState = toastState.filter((t) => t.id !== id);

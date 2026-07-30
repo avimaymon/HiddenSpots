@@ -7,15 +7,35 @@ import { auth } from "@/lib/auth/config";
 import { LocationDetailPageClient } from "@/components/locations/LocationDetailPageClient";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Map } from "lucide-react";
+import { buildPageAlternates, OG_LOCALE, SITE_NAME } from "@/lib/seo/site";
+import { routing, type Locale } from "@/i18n/routing";
 
 interface Props {
-  params: Promise<{ id: string }>;
+  params: Promise<{ locale: string; id: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params;
+  const { id, locale: raw } = await params;
+  const locale = (routing.locales.includes(raw as Locale) ? raw : routing.defaultLocale) as Locale;
   const loc = await getLocationById(id);
-  return { title: loc?.title ?? "Location" };
+  const title = loc?.title ?? "Location";
+  const description = loc?.description?.slice(0, 160) || undefined;
+  const alternates = buildPageAlternates(locale, `/locations/${id}`);
+  return {
+    title,
+    description,
+    robots: { index: false, follow: false },
+    alternates,
+    openGraph: {
+      type: "website",
+      siteName: SITE_NAME,
+      locale: OG_LOCALE[locale],
+      title,
+      description,
+      url: alternates.canonical,
+    },
+    twitter: { card: "summary", title, description },
+  };
 }
 
 export default async function LocationDetailPage({ params }: Props) {
@@ -25,10 +45,18 @@ export default async function LocationDetailPage({ params }: Props) {
 
   if (!loc) notFound();
 
-  const categories = await prisma.category.findMany({
-    where: { OR: [{ userId: session!.user!.id }, { isSystem: true }] },
-    orderBy: { name: "asc" },
-  });
+  const [categories, uniqueVisitorCount] = await Promise.all([
+    prisma.category.findMany({
+      where: { OR: [{ userId: session!.user!.id }, { isSystem: true }] },
+      orderBy: { name: "asc" },
+    }),
+    prisma.visit.groupBy({
+      by: ["userId"],
+      where: { locationId: id },
+    }).then((rows) => rows.length),
+  ]);
+
+  const isVerified = uniqueVisitorCount >= 3;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -38,7 +66,10 @@ export default async function LocationDetailPage({ params }: Props) {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <h1 className="font-bold text-sm truncate flex-1">{loc.title}</h1>
+        <h1 className="font-bold text-sm truncate flex-1">
+          {loc.title}
+          {isVerified && <span className="ml-1.5 text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-1.5 py-0.5 rounded-full font-medium">✓ Verified</span>}
+        </h1>
         <Button variant="outline" size="sm" className="rounded-xl shrink-0" asChild>
           <Link href={`/app?spot=${id}`}>
             <Map className="h-3.5 w-3.5" /> Map

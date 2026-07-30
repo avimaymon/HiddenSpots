@@ -68,6 +68,19 @@ model User {
   passwordHash   String?
   onboarded      Boolean         @default(false)
 
+  // Google Drive cloud backup
+  driveFileId        String?
+  driveLastBackupAt  DateTime?
+  driveAutoBackup    Boolean   @default(false)
+  driveNextBackupAt  DateTime?
+
+  // Personalization
+  fontSize         String  @default("default")
+  dashboardLayout  Json?
+  badges           Json?
+  appVersion       String?
+  pushSubscription String?
+
   accounts      Account[]
   sessions      Session[]
   locations     Location[]
@@ -77,8 +90,14 @@ model User {
   trips         Trip[]
   visits        Visit[]
   smartViews    SmartView[]
-  sharedBy      Share[]    @relation("SharedBy")
-  sharedWith    Share[]    @relation("SharedWith")
+  sharedBy      Share[]         @relation("SharedBy")
+  sharedWith    Share[]         @relation("SharedWith")
+  notifications Notification[]
+  following     Follow[]        @relation("Follower")
+  followers     Follow[]        @relation("Following")
+  comments      Comment[]
+  spotReports   SpotReport[]
+  feedback      Feedback[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -138,11 +157,21 @@ model Location {
   privateNotes String?   @db.Text
   externalLinks String[]
   coverPhotoUrl String?
+  tips          String?   @db.Text
+  vibes         String[]
 
   // Privacy
   privacy          PrivacyLevel @default(PRIVATE)
   fuzzyCoordinates Boolean      @default(false)
   fuzzyRadiusMeters Int         @default(500)
+
+  // Field details
+  accessibilityLevel String?
+  verifiedAt         DateTime?
+
+  // Hazard
+  hazardNote      String?
+  hazardExpiresAt DateTime?
 
   // Relations
   photos          LocationPhoto[]
@@ -150,6 +179,10 @@ model Location {
   collectionItems CollectionLocation[]
   tripLocations   TripLocation[]
   shares          Share[]
+  history         LocationHistory[]
+  comments        Comment[]
+  spotReports     SpotReport[]
+  tracks          Track[]
 
   deletedAt DateTime?
 
@@ -175,6 +208,7 @@ model LocationPhoto {
   width     Int?
   height    Int?
   takenAt   DateTime?
+  blurHash  String?
 
   createdAt DateTime @default(now())
 
@@ -188,6 +222,7 @@ model LocationPhoto {
 model Category {
   id       String  @id @default(cuid())
   name     String
+  nameHe   String?
   icon     String  @default("map-pin")
   color    String  @default("#22c55e")
   isSystem Boolean @default(false)
@@ -334,6 +369,10 @@ model Trip {
   privacy     PrivacyLevel @default(PRIVATE)
   color       String       @default("#f59e0b")
 
+  packingList      Json?
+  emergencyContact String?
+  emergencyPhone   String?
+
   locations TripLocation[]
   shares    Share[]
 
@@ -351,7 +390,8 @@ model TripLocation {
   location   Location @relation(fields: [locationId], references: [id])
   sortOrder  Int      @default(0)
   notes      String?
-  stayDuration Int?   // minutes planned at this stop
+  stayDuration  Int?
+  arrivalOffset Int?
 
   createdAt DateTime @default(now())
 
@@ -385,6 +425,127 @@ model Share {
 
   @@index([sharedById])
   @@index([publicToken])
+}
+
+// ─────────────────────────────────────────────
+// Location History
+// ─────────────────────────────────────────────
+
+model LocationHistory {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  userId     String
+  snapshot   Json
+  createdAt  DateTime @default(now())
+
+  @@index([locationId])
+}
+
+// ─────────────────────────────────────────────
+// Comments
+// ─────────────────────────────────────────────
+
+model Comment {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body       String   @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([locationId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// Spot Reports
+// ─────────────────────────────────────────────
+
+model SpotReport {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  reason     String
+  details    String?  @db.Text
+  resolved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([locationId])
+}
+
+// ─────────────────────────────────────────────
+// In-app product feedback
+// ─────────────────────────────────────────────
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  message   String   @db.Text
+  page      String?
+  locale    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// Notifications
+// ─────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String?
+  href      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+// ─────────────────────────────────────────────
+// Follow
+// ─────────────────────────────────────────────
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+// ─────────────────────────────────────────────
+// GPX Tracks
+// ─────────────────────────────────────────────
+
+model Track {
+  id         String   @id @default(cuid())
+  userId     String
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  name       String?
+  points     Json
+  distance   Float?
+  duration   Int?
+  gpxUrl     String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
 }
 
 // ─────────────────────────────────────────────

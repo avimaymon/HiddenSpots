@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0] ?? "anon";
-  const { ok } = rateLimit(`geocode:${session.user.id ?? ip}`, 20, 60_000);
+  const { ok } = await rateLimit(`geocode:${session.user.id ?? ip}`, 20, 60_000);
   if (!ok) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }

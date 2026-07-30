@@ -13,19 +13,37 @@ vercel --prod
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `DATABASE_URL` | ✅ | Neon pooled connection (`?pgbouncer=true`) |
-| `DIRECT_URL` | ✅ | Neon direct (migrations / db push) |
-| `AUTH_SECRET` | ✅ | `openssl rand -base64 32` |
-| `AUTH_URL` | ✅ | `https://your-app.vercel.app` |
-| `BLOB_READ_WRITE_TOKEN` | Recommended | Image uploads in production |
-| `NEXT_PUBLIC_MAPBOX_TOKEN` | If using Mapbox | |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | If using Google | |
+| `DATABASE_URL` | yes | Neon pooled (`?pgbouncer=true`) |
+| `DIRECT_URL` | yes | Neon direct (migrations) |
+| `AUTH_SECRET` | yes | `openssl rand -base64 32` |
+| `AUTH_URL` | yes | `https://your-app.vercel.app` |
+| `BLOB_READ_WRITE_TOKEN` | recommended | Image uploads |
+| `CRON_SECRET` | for Drive cron | Bearer for `/api/cron/drive-backup` |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | if Mapbox | |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | if Google | |
+| `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` | optional | Set + `NEXT_PUBLIC_ANALYTICS_PROVIDER=plausible` |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | optional | Web push |
+
+See [`.env.example`](.env.example) for the full list.
+
+## Migration baseline (first deploy after `db push`)
+
+Schema was historically applied with `prisma db push`. Vercel builds with `migrate deploy`. On an existing Neon DB once:
+
+```bash
+npx prisma migrate resolve --applied 0_init
+npx prisma migrate resolve --applied 20260723010944_add_drive_backup
+npx prisma migrate deploy
+```
+
+After that, only `prisma migrate deploy` (via `build:deploy`). New changes: `npm run db:migrate` locally — never `db:push` against prod.
 
 ## Build pipeline
 
 - **Local:** `npm run build`
-- **Vercel:** `npm run build:deploy` (= `prisma generate` → `db push` → `next build`)
-- **Region:** `fra1` (Frankfurt) — configured in `vercel.json`
+- **Vercel:** `npm run build:deploy` (= `prisma generate` → `migrate deploy` → `next build`)
+- **Region:** `fra1` (Frankfurt) — `vercel.json`
+- **Cron:** daily `0 3 * * *` → `/api/cron/drive-backup` (users with Drive auto-backup on)
 
 ## Health check
 
@@ -34,33 +52,22 @@ GET /api/health
 → { "status": "ok" }
 ```
 
-## Performance optimizations (built-in)
-
-| Area | Implementation |
-|------|----------------|
-| Map bundle | Dynamic import per provider (Mapbox/Google/Leaflet) |
-| Map data | Lean Prisma `select` — no full location payload |
-| Categories | `unstable_cache` 5 min TTL |
-| Images | AVIF/WebP via `next/image`, 30-day cache |
-| Lists | Virtual scroll @ 40+ items (`@tanstack/react-virtual`) |
-| Cards | `React.memo` on `LocationCard` |
-| Packages | `optimizePackageImports` for lucide, radix, date-fns |
-| PWA | Service worker caches static assets |
-| API | Rate limits on `/api/upload`, `/api/geocode` |
-| DB | Prisma singleton (serverless-safe) |
-| Security | HSTS, CSP headers, `poweredByHeader: false` |
-
-## Post-deploy checklist
+## Smoke test (phone, `/he/app`)
 
 - [ ] `/api/health` returns 200
-- [ ] `/he/app` loads map with markers
-- [ ] Sign in (Google/GitHub/credentials)
-- [ ] Upload photo (needs Blob token)
-- [ ] `/he/share/[token]` public share works
-- [ ] Lighthouse Mobile ≥ 85 (target 90)
+- [ ] Sign in (Google / credentials)
+- [ ] Add spot from GPS FAB
+- [ ] Log visit (+ photo if Blob configured)
+- [ ] Open `/he/share/[token]` logged out
+- [ ] Airplane mode → offline banner
+- [ ] Settings → Sun theme readable outdoors
+- [ ] Search: `מפלים לכלבים` shows smart-filter chips
+- [ ] Feedback button submits
+- [ ] Drive: connect + enable daily auto-backup (needs `CRON_SECRET`)
 
 ## Monitoring
 
-- Vercel → Analytics + Speed Insights (enable in dashboard)
+- Vercel → Analytics + Speed Insights
 - Logs: `vercel logs --prod`
-- DB: Neon dashboard → connection pooling active
+- Plausible when `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` is set
+- Feedback rows: Prisma Studio → `Feedback`

@@ -4,13 +4,14 @@ import { Link, usePathname } from "@/i18n/navigation";
 import { useParams } from "next/navigation";
 import {
   Map, List, FolderOpen, Route, LayoutDashboard,
-  Settings, LogOut, ChevronLeft, ChevronRight,
+  Settings, LogOut, ChevronLeft,
 } from "lucide-react";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { AppLogo } from "@/components/shared/AppLogo";
+import { NotificationBell } from "@/components/shared/NotificationBell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -38,7 +39,7 @@ export function Sidebar({ user }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "hidden md:flex flex-col relative border-r border-border/60 bg-background/95 backdrop-blur-xl transition-all duration-300 ease-out shrink-0",
+          "hidden md:flex flex-col relative border-e border-border/60 bg-background/95 backdrop-blur-xl transition-all duration-300 ease-out shrink-0",
           collapsed ? "w-[4.5rem]" : "w-[var(--sidebar-width)]"
         )}
       >
@@ -81,7 +82,10 @@ export function Sidebar({ user }: SidebarProps) {
                   </Link>
                 </TooltipTrigger>
                 {collapsed && (
-                  <TooltipContent side="right" className="font-medium">
+                  <TooltipContent
+                    side={locale === "he" ? "left" : "right"}
+                    className="font-medium"
+                  >
                     {label}
                   </TooltipContent>
                 )}
@@ -92,6 +96,11 @@ export function Sidebar({ user }: SidebarProps) {
 
         {/* Bottom */}
         <div className="px-2.5 pb-4 space-y-1 border-t border-border/50 pt-4">
+          {!collapsed && (
+            <div className="flex justify-end px-1 pb-1">
+              <NotificationBell />
+            </div>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
@@ -105,7 +114,7 @@ export function Sidebar({ user }: SidebarProps) {
                 {!collapsed && <span>{t("settings")}</span>}
               </Link>
             </TooltipTrigger>
-            {collapsed && <TooltipContent side="right">{t("settings")}</TooltipContent>}
+            {collapsed && <TooltipContent side={locale === "he" ? "left" : "right"}>{t("settings")}</TooltipContent>}
           </Tooltip>
 
           <div
@@ -140,17 +149,19 @@ export function Sidebar({ user }: SidebarProps) {
           </div>
         </div>
 
-        {/* Collapse toggle */}
+        {/* Collapse toggle — sits on the outer edge, flips in RTL */}
         <button
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="absolute -right-3 top-[4.5rem] z-20 hidden md:flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background shadow-md hover:bg-muted hover:shadow-lg transition-all"
+          className="absolute -end-3 top-[4.5rem] z-20 hidden md:flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background shadow-md hover:bg-muted hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {collapsed ? (
-            <ChevronRight className="h-3 w-3" />
-          ) : (
-            <ChevronLeft className="h-3 w-3" />
-          )}
+          {/* LTR: open=ChevronLeft, collapsed=ChevronRight (rotate-180). RTL: mirror. */}
+          <ChevronLeft
+            className={cn(
+              "h-3 w-3 transition-transform duration-300",
+              collapsed ? "rotate-180 rtl:rotate-0" : "rotate-0 rtl:rotate-180"
+            )}
+          />
         </button>
       </aside>
     </TooltipProvider>

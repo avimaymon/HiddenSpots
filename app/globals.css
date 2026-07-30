@@ -37,6 +37,8 @@
   --shadow-glass: 0 8px 32px hsl(0 0% 0% / 0.08), 0 2px 8px hsl(0 0% 0% / 0.04);
   --shadow-glass-lg: 0 16px 48px hsl(0 0% 0% / 0.12), 0 4px 16px hsl(0 0% 0% / 0.06);
   --shadow-glow: 0 0 40px hsl(var(--primary) / 0.15);
+  --shadow-float: 0 20px 50px -20px hsl(160 40% 10% / 0.28), 0 8px 20px -8px hsl(160 30% 10% / 0.12);
+  --shadow-marker: 0 4px 14px hsl(var(--primary) / 0.35);
 }
 
 @layer base {
@@ -71,31 +73,37 @@
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --app-height: 100dvh;
+    /* Set dynamically by useVisualViewport; 0px default keeps layouts stable on desktop */
+    --keyboard-height: 0px;
   }
 
   .dark {
-    --background: 160 25% 6%;
-    --foreground: 40 15% 96%;
-    --card: 160 20% 9%;
-    --card-foreground: 40 15% 96%;
-    --popover: 160 20% 9%;
-    --popover-foreground: 40 15% 96%;
-    --primary: 152 50% 42%;
-    --primary-foreground: 160 30% 6%;
-    --secondary: 160 18% 14%;
+    --background: 160 28% 5%;
+    --foreground: 40 18% 96%;
+    /* Card lifted slightly above background for depth */
+    --card: 160 20% 10%;
+    --card-foreground: 40 18% 96%;
+    --popover: 160 20% 10%;
+    --popover-foreground: 40 18% 96%;
+    --primary: 152 48% 44%;
+    --primary-foreground: 160 30% 5%;
+    --secondary: 160 18% 13%;
     --secondary-foreground: 40 15% 90%;
-    --muted: 160 18% 14%;
-    --muted-foreground: 160 8% 58%;
-    --accent: 38 85% 55%;
-    --accent-foreground: 30 80% 10%;
+    /* Muted slightly brighter for readable labels */
+    --muted: 160 16% 14%;
+    --muted-foreground: 160 8% 64%;
+    --accent: 36 90% 52%;
+    --accent-foreground: 30 80% 8%;
     --destructive: 0 62% 45%;
     --destructive-foreground: 0 0% 100%;
-    --border: 160 15% 16%;
-    --input: 160 15% 16%;
-    --ring: 152 50% 42%;
-    --surface-elevated: 160 18% 11%;
-    --nature: 152 45% 45%;
-    --nature-foreground: 160 30% 6%;
+    /* Borders more visible in dark so cards have defined edges */
+    --border: 160 12% 20%;
+    --input: 160 12% 20%;
+    --ring: 152 48% 44%;
+    --surface-elevated: 160 18% 13%;
+    --nature: 152 42% 46%;
+    --nature-foreground: 160 30% 5%;
+    --amber-accent: 36 90% 52%;
   }
 
   * {
@@ -129,35 +137,79 @@
   }
 
   .glass {
-    @apply bg-background/80 backdrop-blur-xl border border-border/60;
-    box-shadow: var(--shadow-glass);
+    @apply bg-background/75 backdrop-blur-xl border border-white/40 dark:border-white/10;
+    box-shadow: var(--shadow-glass), inset 0 1px 0 hsl(0 0% 100% / 0.35);
   }
 
   .glass-strong {
-    @apply bg-background/92 backdrop-blur-2xl border border-border/50;
-    box-shadow: var(--shadow-glass-lg);
+    @apply bg-background/88 backdrop-blur-2xl border border-white/50 dark:border-white/10;
+    box-shadow: var(--shadow-glass-lg), inset 0 1px 0 hsl(0 0% 100% / 0.4);
   }
 
   .gradient-nature {
     background: linear-gradient(
       135deg,
-      hsl(var(--primary) / 0.12) 0%,
-      hsl(var(--accent) / 0.06) 50%,
+      hsl(var(--primary) / 0.14) 0%,
+      hsl(var(--accent) / 0.08) 45%,
       hsl(var(--background)) 100%
     );
   }
 
   .gradient-mesh {
     background:
-      radial-gradient(ellipse 80% 60% at 20% 10%, hsl(var(--primary) / 0.18), transparent 50%),
-      radial-gradient(ellipse 60% 50% at 80% 80%, hsl(var(--accent) / 0.12), transparent 50%),
-      radial-gradient(ellipse 50% 40% at 60% 20%, hsl(152 40% 50% / 0.08), transparent 50%),
+      radial-gradient(ellipse 90% 70% at 15% 0%, hsl(var(--primary) / 0.22), transparent 55%),
+      radial-gradient(ellipse 70% 55% at 90% 85%, hsl(var(--accent) / 0.16), transparent 50%),
+      radial-gradient(ellipse 50% 40% at 55% 30%, hsl(152 45% 45% / 0.1), transparent 50%),
       hsl(var(--background));
+  }
+
+  .aurora-wash {
+    background:
+      radial-gradient(ellipse 100% 80% at 50% -20%, hsl(var(--primary) / 0.28), transparent 55%),
+      radial-gradient(ellipse 60% 50% at 100% 40%, hsl(var(--accent) / 0.14), transparent 50%),
+      radial-gradient(ellipse 50% 40% at 0% 70%, hsl(160 40% 35% / 0.12), transparent 45%);
+  }
+
+  .sun-flare {
+    background: radial-gradient(
+      circle at 72% 18%,
+      hsl(var(--accent) / 0.35) 0%,
+      hsl(var(--accent) / 0.08) 22%,
+      transparent 48%
+    );
+    animation: sun-drift 18s ease-in-out infinite alternate;
+  }
+
+  .noise-film {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+    background-size: 180px;
   }
 
   .text-gradient {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    background-image: linear-gradient(
+      125deg,
+      hsl(var(--primary)) 0%,
+      hsl(152 50% 28%) 40%,
+      hsl(var(--accent)) 100%
+    );
+  }
+
+  .lift-on-hover {
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease;
+  }
+  .lift-on-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-float);
+  }
+
+  .fab-nature {
+    background: linear-gradient(145deg, hsl(var(--primary)) 0%, hsl(152 55% 26%) 55%, hsl(var(--accent)) 160%);
+    box-shadow: var(--shadow-float), 0 0 0 0 hsl(var(--primary) / 0.35);
+  }
+
+  .marker-breathe {
+    animation: marker-pulse 2.4s ease-in-out infinite;
   }
 
   .safe-area-pb {
@@ -186,6 +238,18 @@
 
   .touch-target {
     @apply min-h-11 min-w-11;
+  }
+
+  /* Focus ring consistency — ensure all interactive elements have visible rings on keyboard nav */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  /* Reset outline on elements that already handle it via Tailwind/Radix */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible {
+    outline: none;
   }
 }
 
@@ -259,6 +323,11 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(100%); }
   to { opacity: 1; transform: translateY(0); }
@@ -274,12 +343,86 @@
   100% { background-position: 200% 0; }
 }
 
+@keyframes sun-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); opacity: 0.9; }
+  to { transform: translate3d(-3%, 2%, 0) scale(1.06); opacity: 1; }
+}
+
+@keyframes mist-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-2%); }
+}
+
+@keyframes mist-drift-slow {
+  from { transform: translateX(0); }
+  to { transform: translateX(2.5%); }
+}
+
+@keyframes marker-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.45); }
+  50% { box-shadow: 0 0 0 10px hsl(var(--primary) / 0); }
+}
+
+@keyframes spark-fly {
+  0% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--spark-angle)) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--spark-angle)) translateY(-48px) scale(0.4); }
+}
+
+@keyframes ken-burns {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+
+.mist-drift {
+  animation: mist-drift 22s ease-in-out infinite alternate;
+}
+.mist-drift-slow {
+  animation: mist-drift-slow 28s ease-in-out infinite alternate;
+}
+.spark-particle {
+  animation: spark-fly 0.7s ease-out forwards;
+}
+.ken-burns-img {
+  animation: ken-burns 12s ease-in-out infinite alternate;
+}
+
+/* Leaflet trip path — draw-on once when mounted */
+.trip-trail-draw {
+  animation: trail-draw 1.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes trail-draw {
+  from {
+    stroke-dasharray: 0 2400;
+  }
+  to {
+    stroke-dasharray: 2400 0;
+  }
+}
+
+.share-check-pop {
+  animation: scale-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.dark .fab-nature {
+  box-shadow:
+    var(--shadow-float),
+    0 0 28px -6px hsl(var(--accent) / 0.35);
+}
+
+.dark .glass-strong {
+  box-shadow: var(--shadow-glass-lg), inset 0 1px 0 hsl(40 30% 90% / 0.06);
+}
+
 .animate-fade-in {
   animation: fade-in 0.25s ease forwards;
 }
 
 .animate-slide-in-right {
   animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-slide-up {
@@ -302,11 +445,71 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
   .animate-fade-in,
   .animate-slide-in-right,
   .animate-slide-up,
-  .animate-scale-in {
-    animation: none;
+  .animate-scale-in,
+  .mist-drift,
+  .mist-drift-slow,
+  .sun-flare,
+  .marker-breathe,
+  .ken-burns-img,
+  .spark-particle,
+  .trip-trail-draw,
+  .share-check-pop {
+    animation: none !important;
+  }
+}
+
+/* Narrow landscape phones — side rail nav instead of bottom (PLAN §19.13) */
+@media (max-height: 430px) and (orientation: landscape) {
+  .pb-nav {
+    padding-bottom: 0 !important;
+    padding-inline-start: calc(3rem + env(safe-area-inset-left, 0px));
+  }
+  nav.mobile-bottom-nav {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+    inset-block-end: 0;
+    inset-block-start: 0;
+    width: 3rem;
+    height: 100%;
+    border-top: none;
+    border-inline-end: 1px solid hsl(var(--border) / 0.5);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.25rem;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  nav.mobile-bottom-nav .nav-label {
+    display: none;
+  }
+}
+
+@media print {
+  .no-print,
+  nav,
+  .mobile-bottom-nav,
+  [data-vaul-drawer],
+  .fixed {
+    display: none !important;
+  }
+  .print-trip-sheet {
+    display: block !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
   }
 }
 
@@ -330,4 +533,77 @@
   textarea {
     font-size: 16px;
   }
+}
+
+/* ─── Sun mode (high contrast, outdoor readability) ─── */
+[data-theme="sun"] {
+  --background: 55 100% 97%;
+  --foreground: 20 14.3% 4%;
+  --card: 0 0% 100%;
+  --card-foreground: 20 14.3% 4%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 20 14.3% 4%;
+  --muted: 55 60% 92%;
+  --muted-foreground: 25 5.3% 28%;
+  --primary: 142 76% 26%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 55 40% 90%;
+  --secondary-foreground: 142 50% 18%;
+  --accent: 36 100% 42%;
+  --accent-foreground: 36 100% 10%;
+  --destructive: 0 84% 40%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 55 30% 78%;
+  --input: 55 30% 78%;
+  --ring: 142 76% 30%;
+  --surface-elevated: 55 100% 99%;
+}
+
+/* Map tiles get a slight warm-brightness boost in Sun mode for legibility */
+[data-theme="sun"] .mapboxgl-map,
+[data-theme="sun"] .leaflet-container {
+  filter: brightness(1.06) saturate(0.95);
+}
+
+/* ─── Font size overrides ─── */
+[data-font-size="large"] {
+  font-size: 105%;
+}
+[data-font-size="xl"] {
+  font-size: 115%;
+}
+
+/* ─── Touch device touch-target expansion ─── */
+/* ponytail: bump all icon-only buttons to WCAG 2.5.5 minimum on coarse pointers.
+   Only applies on actual touch screens; desktop layout stays compact. */
+@media (pointer: coarse) {
+  [data-size="icon-sm"],
+  .btn-icon-sm {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  /* Chip / filter buttons */
+  [role="tab"],
+  [role="button"] {
+    min-height: 2.5rem;
+  }
+}
+
+/* ─── Motion tokens (runtime access via JS if needed) ─── */
+:root {
+  --motion-duration-fast: 150ms;
+  --motion-duration: 220ms;
+  --motion-duration-slow: 380ms;
+  --motion-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── RTL logical-direction helpers ─── */
+/* slide-in-start: enters from the logical start edge (left in LTR, right in RTL) */
+.animate-slide-in-start {
+  animation: slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+[dir="rtl"] .animate-slide-in-start {
+  animation-name: slide-in-right;
 }

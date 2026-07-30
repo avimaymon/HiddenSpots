@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { locationSchema, type LocationFormData } from "@/lib/validations/schemas";
 import { createLocation, addLocationPhoto } from "@/lib/actions/locations";
+type CreatedLocation = Awaited<ReturnType<typeof createLocation>>;
+import { addTagToLocation } from "@/lib/actions/tags";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -14,23 +16,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, MapPin, X } from "lucide-react";
+import { Loader2, MapPin } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { PhotoUpload } from "@/components/locations/PhotoUpload";
+import { TagInput } from "@/components/locations/TagInput";
+import { useTranslations } from "next-intl";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultCoords?: { lat: number; lng: number };
   categories: { id: string; name: string; color: string; icon: string }[];
-  onCreated?: (loc: any) => void;
+  onCreated?: (loc: CreatedLocation) => void;
 }
 
 export function AddLocationDialog({ open, onOpenChange, defaultCoords, categories, onCreated }: Props) {
+  const t = useTranslations("locations");
+  const tc = useTranslations("common");
   const [loading, setLoading] = useState(false);
-  const [tagInput, setTagInput] = useState("");
+  const [pendingTags, setPendingTags] = useState<string[]>([]);
   const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
 
   const form = useForm<LocationFormData>({
@@ -50,6 +55,7 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = form;
   const seasons = watch("recommendedSeasons") ?? [];
+  const DRAFT_KEY = "hiddenspots_add_location_draft";
 
   useEffect(() => {
     if (defaultCoords) {
@@ -57,6 +63,31 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
       setValue("longitude", defaultCoords.lng);
     }
   }, [defaultCoords, setValue]);
+
+  // Restore draft when dialog opens
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<LocationFormData>;
+        if (draft.title) {
+          Object.entries(draft).forEach(([k, v]) => setValue(k as keyof LocationFormData, v as never));
+        }
+      }
+    } catch {}
+  }, [open, setValue]);
+
+  // Auto-save draft on title change
+  const title = watch("title");
+  useEffect(() => {
+    if (!open || !title) return;
+    const id = setTimeout(() => {
+      const vals = form.getValues();
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(vals));
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [title, open, form]);
 
   useEffect(() => {
     if (!open) {
@@ -82,12 +113,17 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
       for (let i = 0; i < pendingPhotos.length; i++) {
         await addLocationPhoto(loc.id, pendingPhotos[i], i === 0);
       }
-      toast({ title: "Location added!", variant: "success" });
+      for (const tag of pendingTags) {
+        await addTagToLocation(loc.id, tag);
+      }
+      localStorage.removeItem("hiddenspots_add_location_draft");
+      toast({ title: t("savedToast"), variant: "success" });
       onCreated?.(loc);
       setPendingPhotos([]);
+      setPendingTags([]);
       form.reset();
     } catch (e) {
-      toast({ title: "Failed to add location", description: String(e), variant: "destructive" });
+      toast({ title: t("saveFailedToast"), description: String(e), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -100,14 +136,17 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl sm:max-w-2xl">
+      <DialogContent
+        className="max-w-2xl sm:max-w-2xl overflow-y-auto"
+        style={{ maxHeight: "calc(100dvh - var(--keyboard-height, 0px) - 2rem)" }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
             <span className="flex items-center gap-2">
               <span className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
                 <MapPin className="h-4 w-4 text-primary" />
               </span>
-              Add New Spot
+              {t("addNewTitle")}
             </span>
             {defaultCoords && (
               <span className="text-xs text-muted-foreground font-normal font-mono ml-2">
@@ -120,30 +159,31 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
         <form onSubmit={handleSubmit(onSubmit)}>
           <Tabs defaultValue="basic" className="mt-2">
             <TabsList className="mb-4">
-              <TabsTrigger value="basic">Basic</TabsTrigger>
-              <TabsTrigger value="details">Details</TabsTrigger>
-              <TabsTrigger value="photos">Photos</TabsTrigger>
-              <TabsTrigger value="privacy">Privacy</TabsTrigger>
+              <TabsTrigger value="basic">{t("tabBasic")}</TabsTrigger>
+              <TabsTrigger value="details">{t("tabDetails")}</TabsTrigger>
+              <TabsTrigger value="photos">{t("tabPhotos")}</TabsTrigger>
+              <TabsTrigger value="tags">{t("tabTags")}</TabsTrigger>
+              <TabsTrigger value="privacy">{t("tabPrivacy")}</TabsTrigger>
             </TabsList>
 
             {/* BASIC */}
             <TabsContent value="basic" className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="title">Name *</Label>
-                <Input id="title" placeholder="Beautiful waterfall…" {...register("title")} />
+                <Label htmlFor="title">{t("fieldNameRequired")}</Label>
+                <Input id="title" placeholder={t("fieldNamePlaceholder")} {...register("title")} />
                 {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="description">Description</Label>
-                <Textarea id="description" placeholder="Describe this place…" rows={3} {...register("description")} />
+                <Label htmlFor="description">{t("fieldDescription")}</Label>
+                <Textarea id="description" placeholder={t("fieldDescriptionPlaceholder")} rows={3} {...register("description")} />
               </div>
 
               <div className="space-y-1.5">
-                <Label>Category</Label>
+                <Label>{t("fieldCategory")}</Label>
                 <Select onValueChange={(v) => setValue("categoryId", v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose a category…" />
+                    <SelectValue placeholder={t("fieldCategoryPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((cat) => (
@@ -160,18 +200,18 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Latitude</Label>
+                  <Label>{t("fieldLatitude")}</Label>
                   <Input type="number" step="any" {...register("latitude", { valueAsNumber: true })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Longitude</Label>
+                  <Label>{t("fieldLongitude")}</Label>
                   <Input type="number" step="any" {...register("longitude", { valueAsNumber: true })} />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <Label>Address</Label>
-                <Input placeholder="Optional address…" {...register("address")} />
+                <Label>{t("fieldAddress")}</Label>
+                <Input placeholder={t("fieldAddressPlaceholder")} {...register("address")} />
               </div>
 
               <div className="flex gap-6">
@@ -181,7 +221,7 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
                     checked={watch("isFavorite")}
                     onCheckedChange={(v) => setValue("isFavorite", v)}
                   />
-                  <Label htmlFor="fav">Favorite</Label>
+                  <Label htmlFor="fav">{t("fieldFavorite")}</Label>
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch
@@ -189,7 +229,7 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
                     checked={watch("isBucketList")}
                     onCheckedChange={(v) => setValue("isBucketList", v)}
                   />
-                  <Label htmlFor="bucket">Bucket List</Label>
+                  <Label htmlFor="bucket">{t("fieldBucketList")}</Label>
                 </div>
               </div>
             </TabsContent>
@@ -197,52 +237,45 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
             {/* DETAILS */}
             <TabsContent value="details" className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Difficulty</Label>
-                <Select onValueChange={(v) => setValue("difficulty", v as any)}>
-                  <SelectTrigger><SelectValue placeholder="Choose difficulty…" /></SelectTrigger>
+                <Label>{t("fieldDifficulty")}</Label>
+                <Select onValueChange={(v) => setValue("difficulty", v as LocationFormData["difficulty"])}>
+                  <SelectTrigger><SelectValue placeholder={t("fieldDifficultyPlaceholder")} /></SelectTrigger>
                   <SelectContent>
-                    {["EASY", "MODERATE", "HARD", "EXPERT"].map((d) => (
-                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    {(["EASY", "MODERATE", "HARD", "EXPERT"] as const).map((d) => (
+                      <SelectItem key={d} value={d}>{t(`difficulty.${d}`)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-1.5">
-                <Label>Cellular Reception</Label>
-                <Select onValueChange={(v) => setValue("cellularQuality", v as any)}>
-                  <SelectTrigger><SelectValue placeholder="Choose reception quality…" /></SelectTrigger>
+                <Label>{t("fieldCellular")}</Label>
+                <Select onValueChange={(v) => setValue("cellularQuality", v as LocationFormData["cellularQuality"])}>
+                  <SelectTrigger><SelectValue placeholder={t("fieldCellularPlaceholder")} /></SelectTrigger>
                   <SelectContent>
-                    {["NONE", "POOR", "FAIR", "GOOD", "EXCELLENT"].map((d) => (
-                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    {(["NONE", "POOR", "FAIR", "GOOD", "EXCELLENT"] as const).map((d) => (
+                      <SelectItem key={d} value={d}>{t(`cellular.${d}`)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                {[
-                  { id: "hasParking", label: "Parking Available" },
-                  { id: "hasWater", label: "Water Available" },
-                  { id: "hasShade", label: "Shaded Area" },
-                  { id: "isFamilyFriendly", label: "Family Friendly" },
-                  { id: "isDogFriendly", label: "Dog Friendly" },
-                  { id: "isCampingAllowed", label: "Camping Allowed" },
-                ].map(({ id, label }) => (
+                {(["hasParking", "hasWater", "hasShade", "isFamilyFriendly", "isDogFriendly", "isCampingAllowed"] as const).map((id) => (
                   <div key={id} className="flex items-center gap-2">
                     <Switch
                       id={id}
-                      onCheckedChange={(v) => setValue(id as any, v)}
+                      onCheckedChange={(v) => setValue(id as keyof LocationFormData, v as never)}
                     />
-                    <Label htmlFor={id}>{label}</Label>
+                    <Label htmlFor={id}>{t(`amenities.${id}`)}</Label>
                   </div>
                 ))}
               </div>
 
               <div className="space-y-1.5">
-                <Label>Recommended Seasons</Label>
+                <Label>{t("fieldSeasons")}</Label>
                 <div className="flex flex-wrap gap-2">
-                  {["Spring", "Summer", "Autumn", "Winter"].map((s) => (
+                  {(["Spring", "Summer", "Autumn", "Winter"] as const).map((s) => (
                     <button
                       key={s}
                       type="button"
@@ -253,15 +286,39 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
                           : "border-border hover:bg-muted"
                       }`}
                     >
-                      {s}
+                      {t(`seasons.${s}`)}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <Label>Private Notes</Label>
-                <Textarea placeholder="Personal notes (only visible to you)…" rows={3} {...register("privateNotes")} />
+                <Label>{t("fieldPrivateNotes")}</Label>
+                <Textarea placeholder={t("fieldPrivateNotesPlaceholder")} rows={3} {...register("privateNotes")} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Visiting Tips</Label>
+                <Textarea placeholder="Best time of day, what to bring, parking tips…" rows={2} {...register("tips")} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Accessibility</Label>
+                <Select onValueChange={(v) => setValue("accessibilityLevel" as keyof LocationFormData, v as never)}>
+                  <SelectTrigger><SelectValue placeholder="Choose accessibility…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="wheelchair">♿ Wheelchair accessible</SelectItem>
+                    <SelectItem value="stroller">🍼 Stroller friendly</SelectItem>
+                    <SelectItem value="elderly">👴 Elderly friendly</SelectItem>
+                    <SelectItem value="challenging">⛰️ Challenging terrain</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Hazard Alert</Label>
+                <Input placeholder="Current hazard note (e.g. trail closed)" {...register("hazardNote")} />
+                <Input type="date" {...register("hazardExpiresAt")} className="mt-1.5" />
               </div>
             </TabsContent>
 
@@ -272,17 +329,51 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
               />
             </TabsContent>
 
+            {/* TAGS */}
+            <TabsContent value="tags" className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>{t("fieldTags")}</Label>
+                <TagInput
+                  tags={pendingTags}
+                  onChange={setPendingTags}
+                  placeholder={t("fieldTagsPlaceholder")}
+                />
+                <p className="text-xs text-muted-foreground">{t("fieldTagsHint")}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Vibe</Label>
+                <div className="flex flex-wrap gap-2">
+                  {(["calm", "adventurous", "photogenic", "romantic", "family", "solitude", "spiritual", "lively"] as const).map((v) => {
+                    const vibes: string[] = (watch as (n: string) => string[])("vibes") ?? [];
+                    const active = vibes.includes(v);
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => {
+                          const cur: string[] = vibes;
+                          setValue("vibes" as keyof LocationFormData, (active ? cur.filter((x) => x !== v) : [...cur, v]) as never);
+                        }}
+                        className={`px-3 py-1 rounded-full text-xs border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
+                      >
+                        {v}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </TabsContent>
+
             {/* PRIVACY */}
             <TabsContent value="privacy" className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Visibility</Label>
-                <Select defaultValue="PRIVATE" onValueChange={(v) => setValue("privacy", v as any)}>
+                <Label>{t("fieldVisibility")}</Label>
+                <Select defaultValue="PRIVATE" onValueChange={(v) => setValue("privacy", v as LocationFormData["privacy"])}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PRIVATE">Private — only you</SelectItem>
-                    <SelectItem value="SHARED">Shared — invited users</SelectItem>
-                    <SelectItem value="PUBLIC">Public — anyone with link</SelectItem>
-                    <SelectItem value="SECRET">Secret — hide exact location</SelectItem>
+                    {(["PRIVATE", "SHARED", "PUBLIC", "SECRET"] as const).map((p) => (
+                      <SelectItem key={p} value={p}>{t(`privacy.${p}`)}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -290,8 +381,8 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
               {watch("privacy") === "SECRET" && (
                 <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
                   <div className="text-sm text-amber-800 dark:text-amber-200">
-                    <p className="font-medium">Secret mode active</p>
-                    <p className="text-xs mt-0.5">Exact coordinates will be hidden from other users. Only approximate area will be shown.</p>
+                    <p className="font-medium">{t("secretActive")}</p>
+                    <p className="text-xs mt-0.5">{t("secretDesc")}</p>
                   </div>
                 </div>
               )}
@@ -300,11 +391,11 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
 
           <DialogFooter className="mt-6">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button type="submit" disabled={loading}>
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save Location
+              {t("saveLocation")}
             </Button>
           </DialogFooter>
         </form>

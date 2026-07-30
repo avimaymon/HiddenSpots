@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/collections";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 
 interface Props {
   locationId: string;
@@ -24,6 +25,8 @@ interface Props {
 type Collection = Awaited<ReturnType<typeof getCollections>>[number];
 
 export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props) {
+  const t = useTranslations("collections");
+  const tc = useTranslations("common");
   const [collections, setCollections] = useState<Collection[]>([]);
   const [memberIds, setMemberIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -31,6 +34,7 @@ export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props)
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     Promise.all([getCollections(), getLocationCollectionIds(locationId)]).then(
       ([cols, memberList]) => {
@@ -47,14 +51,14 @@ export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props)
       if (memberIds.has(collectionId)) {
         await removeLocationFromCollection(collectionId, locationId);
         setMemberIds((s) => { const n = new Set(s); n.delete(collectionId); return n; });
-        toast({ title: "Removed from collection", variant: "success" });
+        toast({ title: t("removeFromCollection"), variant: "success" });
       } else {
         await addLocationToCollection(collectionId, locationId);
         setMemberIds((s) => new Set(s).add(collectionId));
-        toast({ title: "Added to collection", variant: "success" });
+        toast({ title: t("locationAdded"), variant: "success" });
       }
     } catch {
-      toast({ title: "Failed to update collection", variant: "destructive" });
+      toast({ title: t("locationAddFailed"), variant: "destructive" });
     } finally {
       setBusy(null);
     }
@@ -66,7 +70,7 @@ export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props)
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderPlus className="h-4 w-4 text-primary" />
-            Add to Collection
+            {t("addToCollectionTitle")}
           </DialogTitle>
         </DialogHeader>
         {loading ? (
@@ -75,7 +79,7 @@ export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props)
           </div>
         ) : collections.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">
-            No collections yet. Create one from the Collections page.
+            {t("noCollectionsHint")}
           </p>
         ) : (
           <div className="space-y-2 max-h-[50dvh] overflow-y-auto">
@@ -104,7 +108,7 @@ export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props)
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{col.name}</p>
-                    <p className="text-xs text-muted-foreground">{col._count.locations} spots</p>
+                    <p className="text-xs text-muted-foreground">{col._count.locations} {t("spots")}</p>
                   </div>
                   {busy === col.id ? (
                     <Loader2 className="h-4 w-4 animate-spin shrink-0" />
@@ -117,7 +121,7 @@ export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props)
           </div>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Done</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{tc("done")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

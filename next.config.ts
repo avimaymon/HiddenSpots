@@ -1,7 +1,32 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import withSerwistInit from "@serwist/next";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
+const withSerwist = withSerwistInit({
+  swSrc: "app/sw.ts",
+  swDest: "public/sw.js",
+  disable: process.env.NODE_ENV === "development",
+});
+
+/** Report-only first — tighten to enforcing after verifying map CDNs in production. */
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://plausible.io https://*.mapbox.com https://maps.googleapis.com https://*.googleapis.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.mapbox.com",
+  "img-src 'self' data: blob: https: http:",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "connect-src 'self' https: wss: blob:",
+  "worker-src 'self' blob:",
+  "child-src 'self' blob:",
+  "frame-src 'self' https://*.google.com https://*.googleapis.com",
+  "media-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  "upgrade-insecure-requests",
+].join("; ");
 
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
@@ -10,6 +35,7 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self)" },
+  { key: "Content-Security-Policy-Report-Only", value: contentSecurityPolicy },
 ];
 
 const nextConfig: NextConfig = {
@@ -45,6 +71,22 @@ const nextConfig: NextConfig = {
       source: "/manifest.json",
       headers: [{ key: "Cache-Control", value: "public, max-age=86400" }],
     },
+    {
+      source: "/llms.txt",
+      headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
+    },
+    {
+      source: "/llms-full.txt",
+      headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
+    },
+    {
+      source: "/sitemap.xml",
+      headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
+    },
+    {
+      source: "/robots.txt",
+      headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
+    },
   ],
   webpack: (config) => {
     config.resolve.alias = {
@@ -55,4 +97,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+export default withSerwist(withNextIntl(nextConfig));

@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registerUser } from "@/lib/actions/auth";
 import { toast } from "@/hooks/use-toast";
-import { Link } from "@/i18n/navigation";
 
 export function SignUpForm() {
   const t = useTranslations("auth");

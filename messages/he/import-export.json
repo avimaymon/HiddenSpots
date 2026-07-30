@@ -1,7 +1,16 @@
 {
   "title": "ייבוא וייצוא",
   "description": "ייבוא מיקומים מקבצים או ייצוא לגיבוי",
+  "importTitle": "ייבוא נתונים",
+  "importDescription": "ייבא נקודות מקבצי GeoJSON, GPX, KML, או CSV",
   "chooseFile": "בחר קובץ",
-  "importSpots": "ייבא מיקומים",
-  "found": "נמצאו {count} מיקומים"
+  "importSpots": "ייבא {count} נקודות",
+  "found": "נמצאו {count} מיקומים ({source})",
+  "andMore": "…ועוד {count}",
+  "parseFailed": "הניתוח נכשל",
+  "noLocationsFound": "לא נמצאו מיקומים",
+  "importFailed": "הייבוא נכשל",
+  "importedCount": "יובאו {count} נקודות",
+  "duplicatesSkipped": "{count} כפילויות דולגו",
+  "errorsCount": "{count} שגיאות"
 }

@@ -1,0 +1,12 @@
+{
+  "required": "Required",
+  "tooShort": "Too short (minimum {min} characters)",
+  "tooLong": "Too long (maximum {max} characters)",
+  "invalidEmail": "Invalid email address",
+  "invalidUrl": "Invalid URL",
+  "invalidCoords": "Invalid coordinates",
+  "latitudeRange": "Latitude must be between -90 and 90",
+  "longitudeRange": "Longitude must be between -180 and 180",
+  "passwordTooShort": "Password must be at least 8 characters",
+  "passwordsNoMatch": "Passwords do not match"
+}

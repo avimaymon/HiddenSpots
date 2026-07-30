@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { deleteVisit } from "@/lib/actions/visits";
 import { toast } from "@/hooks/use-toast";
+import { useTranslations } from "next-intl";
 
 type Visit = Awaited<ReturnType<typeof import("@/lib/actions/visits").getVisits>>[number];
 
@@ -16,21 +17,23 @@ interface Props {
 }
 
 export function VisitsClientPage({ initialVisits }: Props) {
+  const t = useTranslations("visits");
+
   async function handleDelete(id: string) {
-    if (!confirm("Delete this visit log?")) return;
+    if (!confirm(t("deleteConfirm"))) return;
     await deleteVisit(id);
-    toast({ title: "Visit deleted" });
+    toast({ title: t("deleted") });
     window.location.reload();
   }
 
   return (
     <div className="flex flex-col h-full min-h-0">
       <PageHeader
-        title="Visit Log"
-        description={`${initialVisits.length} visits recorded`}
+        title={t("title")}
+        description={t("description", { count: initialVisits.length })}
       >
         <Button asChild size="sm" className="rounded-xl">
-          <Link href="/app">Log on Map</Link>
+          <Link href="/app">{t("logOnMap")}</Link>
         </Button>
       </PageHeader>
 
@@ -38,8 +41,8 @@ export function VisitsClientPage({ initialVisits }: Props) {
         {initialVisits.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[40dvh] text-center gap-4">
             <Eye className="h-12 w-12 text-muted-foreground/30" />
-            <p className="font-semibold">No visits logged yet</p>
-            <p className="text-sm text-muted-foreground">Open a spot and tap the footprints icon to record a visit</p>
+            <p className="font-semibold">{t("empty")}</p>
+            <p className="text-sm text-muted-foreground">{t("emptyHint")}</p>
           </div>
         ) : (
           <div className="space-y-2 max-w-2xl">

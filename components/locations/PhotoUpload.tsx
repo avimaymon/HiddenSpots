@@ -1,45 +1,56 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload, X, Loader2, ImageIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Upload, X, Loader2, WifiOff } from "lucide-react";
 import Image from "next/image";
-import { cn } from "@/lib/utils";
+import { enqueueSync } from "@/lib/offline/db";
+import { generateBlurHash } from "@/lib/media/blurhash-client";
 
 interface Props {
-  onUploadComplete: (url: string) => void;
+  onUploadComplete: (url: string, blurHash?: string) => void;
+  locationId?: string;
   multiple?: boolean;
   existingPhotos?: { url: string; id: string }[];
   onRemove?: (id: string) => void;
 }
 
-export function PhotoUpload({ onUploadComplete, multiple = true, existingPhotos = [], onRemove }: Props) {
+export function PhotoUpload({ onUploadComplete, locationId, multiple = true, existingPhotos = [], onRemove }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [previews, setPreviews] = useState<{ url: string; uploading: boolean }[]>([]);
+  const [previews, setPreviews] = useState<{ url: string; uploading: boolean; queued?: boolean }[]>([]);
 
   async function handleFiles(files: FileList) {
     const fileArray = Array.from(files);
-    const newPreviews = fileArray.map((f) => ({
-      url: URL.createObjectURL(f),
-      uploading: true,
-    }));
+    const newPreviews = fileArray.map((f) => ({ url: URL.createObjectURL(f), uploading: true }));
     setPreviews((p) => [...p, ...newPreviews]);
     setUploading(true);
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
-      const fd = new FormData();
+
+      if (!navigator.onLine) {
+        // ponytail: offline path - enqueue when location already saved, skip otherwise
+        if (locationId) {
+          const blobUrl = newPreviews[i].url;
+          await enqueueSync("upload-photo", { locationId, url: blobUrl, isPrimary: i === 0 });
+          onUploadComplete(blobUrl);
+          setPreviews((p) => p.map((prev, idx) => idx === previews.length + i ? { ...prev, uploading: false, queued: true } : prev));
+        } else {
+          setPreviews((p) => p.map((prev, idx) => idx === previews.length + i ? { ...prev, uploading: false } : prev));
+        }
+        continue;
+      }
+
+      const [blurHash, fd] = await Promise.all([
+        generateBlurHash(file),
+        Promise.resolve(new FormData()),
+      ]);
       fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       if (res.ok) {
-        const { url } = await res.json();
-        onUploadComplete(url);
-        setPreviews((p) =>
-          p.map((prev, idx) =>
-            idx === previews.length + i ? { ...prev, uploading: false, url } : prev
-          )
-        );
+        const { url } = await res.json() as { url: string };
+        onUploadComplete(url, blurHash ?? undefined);
+        setPreviews((p) => p.map((prev, idx) => idx === previews.length + i ? { ...prev, uploading: false, url } : prev));
       }
     }
     setUploading(false);
@@ -47,7 +58,6 @@ export function PhotoUpload({ onUploadComplete, multiple = true, existingPhotos 
 
   return (
     <div className="space-y-3">
-      {/* Drop zone */}
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
@@ -69,12 +79,12 @@ export function PhotoUpload({ onUploadComplete, multiple = true, existingPhotos 
         ref={inputRef}
         type="file"
         accept="image/*"
+        capture="environment"
         multiple={multiple}
         className="hidden"
         onChange={(e) => { if (e.target.files) handleFiles(e.target.files); }}
       />
 
-      {/* Preview grid */}
       {(existingPhotos.length > 0 || previews.length > 0) && (
         <div className="grid grid-cols-4 gap-2">
           {existingPhotos.map((photo) => (
@@ -84,19 +94,25 @@ export function PhotoUpload({ onUploadComplete, multiple = true, existingPhotos 
                 <button
                   type="button"
                   onClick={() => onRemove(photo.id)}
-                  className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center"
+                  aria-label="Remove photo"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
           ))}
           {previews.map((p, i) => (
             <div key={i} className="relative aspect-square rounded-lg overflow-hidden">
-              <Image src={p.url} alt="" fill className="object-cover" />
+              <Image src={p.url} alt="" fill unoptimized className="object-cover" />
               {p.uploading && (
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                   <Loader2 className="h-4 w-4 animate-spin text-white" />
+                </div>
+              )}
+              {p.queued && (
+                <div className="absolute inset-0 bg-amber-900/60 flex items-center justify-center" title="Queued for upload">
+                  <WifiOff className="h-4 w-4 text-white" />
                 </div>
               )}
             </div>

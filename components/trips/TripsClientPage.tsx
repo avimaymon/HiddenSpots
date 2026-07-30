@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { createTrip, deleteTrip } from "@/lib/actions/trips";
 import { toast } from "@/hooks/use-toast";
+import { useTranslations } from "next-intl";
 
 type Trip = Awaited<ReturnType<typeof import("@/lib/actions/trips").getTrips>>[number];
 
@@ -20,6 +21,8 @@ interface Props {
 }
 
 export function TripsClientPage({ initialTrips }: Props) {
+  const t = useTranslations("trips");
+  const tc = useTranslations("common");
   const [trips, setTrips] = useState(initialTrips);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -30,28 +33,28 @@ export function TripsClientPage({ initialTrips }: Props) {
     setLoading(true);
     try {
       const trip = await createTrip({ name: name.trim() });
-      setTrips((t) => [{ ...trip, _count: { locations: 0 }, locations: [] }, ...t]);
+      setTrips((prev) => [{ ...trip, _count: { locations: 0 }, locations: [] }, ...prev]);
       setOpen(false);
       setName("");
-      toast({ title: "Trip created", variant: "success" });
+      toast({ title: t("created"), variant: "success" });
     } catch {
-      toast({ title: "Failed to create trip", variant: "destructive" });
+      toast({ title: t("createFailed"), variant: "destructive" });
     } finally {
       setLoading(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this trip plan?")) return;
+    if (!confirm(t("deleteConfirm"))) return;
     await deleteTrip(id);
-    setTrips((t) => t.filter((x) => x.id !== id));
+    setTrips((prev) => prev.filter((x) => x.id !== id));
   }
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <PageHeader title="Trips" description="Plan your outdoor adventures">
+      <PageHeader title={t("title")} description={t("description")}>
         <Button size="sm" className="rounded-xl" onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4" /> New Trip
+          <Plus className="h-4 w-4" /> {t("newTrip")}
         </Button>
       </PageHeader>
 
@@ -61,10 +64,10 @@ export function TripsClientPage({ initialTrips }: Props) {
             <div className="h-16 w-16 rounded-2xl bg-amber-500/10 flex items-center justify-center">
               <Route className="h-8 w-8 text-amber-600" />
             </div>
-            <p className="font-semibold">No trips planned</p>
-            <p className="text-sm text-muted-foreground max-w-xs">Build day trips and multi-day routes from your saved spots</p>
+            <p className="font-semibold">{t("empty")}</p>
+            <p className="text-sm text-muted-foreground max-w-xs">{t("emptyHint")}</p>
             <Button className="rounded-xl" onClick={() => setOpen(true)}>
-              <Plus className="h-4 w-4" /> Plan a Trip
+              <Plus className="h-4 w-4" /> {t("planTrip")}
             </Button>
           </div>
         ) : (
@@ -86,7 +89,7 @@ export function TripsClientPage({ initialTrips }: Props) {
                       <p className="font-bold truncate">{trip.name}</p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <Badge variant="secondary" className="text-[10px]">
-                          {trip._count.locations} stops
+                          {trip._count.locations} {t("stops")}
                         </Badge>
                         {trip.startDate && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -99,7 +102,7 @@ export function TripsClientPage({ initialTrips }: Props) {
                         <div className="flex flex-wrap gap-1 mt-2">
                           {trip.locations.slice(0, 5).map((stop, i) => (
                             <span key={stop.id} className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">
-                              {i + 1}. {stop.location?.title ?? "Stop"}
+                              {i + 1}. {stop.location?.title ?? "—"}
                             </span>
                           ))}
                         </div>
@@ -108,9 +111,7 @@ export function TripsClientPage({ initialTrips }: Props) {
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <Button variant="outline" size="sm" className="rounded-xl" asChild>
-                      <Link href={`/trips/${trip.id}`}>
-                        View
-                      </Link>
+                      <Link href={`/trips/${trip.id}`}>{t("view")}</Link>
                     </Button>
                     <Button variant="ghost" size="sm" className="rounded-xl" asChild>
                       <Link href="/app">
@@ -136,22 +137,24 @@ export function TripsClientPage({ initialTrips }: Props) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Plan a New Trip</DialogTitle>
+            <DialogTitle>{t("planNewTitle")}</DialogTitle>
           </DialogHeader>
           <div className="py-2">
-            <Label>Trip name</Label>
+            <Label>{t("fieldName")}</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Northern waterfalls weekend…"
+              placeholder={t("fieldNamePlaceholder")}
               className="mt-2 h-11"
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              autoFocus
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>{tc("cancel")}</Button>
             <Button onClick={handleCreate} disabled={loading || !name.trim()}>
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create
+              {tc("create")}
             </Button>
           </DialogFooter>
         </DialogContent>

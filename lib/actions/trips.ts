@@ -101,6 +101,13 @@ export async function addLocationToTrip(tripId: string, locationId: string) {
   revalidateAppPaths(`/trips/${tripId}`, "/trips");
 }
 
+export async function removeLocationFromTrip(tripId: string, locationId: string) {
+  const userId = await requireAuth();
+  await assertOwns(userId, tripId);
+  await prisma.tripLocation.deleteMany({ where: { tripId, locationId } });
+  revalidateAppPaths(`/trips/${tripId}`, "/trips");
+}
+
 export async function reorderTripLocations(
   tripId: string,
   orderedIds: string[]
@@ -116,6 +123,33 @@ export async function reorderTripLocations(
     )
   );
   revalidateAppPaths(`/trips/${tripId}`);
+}
+
+export async function cloneTrip(tripId: string) {
+  const userId = await requireAuth();
+  // Find the shared trip (may be from another user via a share token)
+  const source = await prisma.trip.findFirst({
+    where: { id: tripId },
+    include: { locations: true },
+  });
+  if (!source) throw new Error("Trip not found");
+  const clone = await prisma.trip.create({
+    data: {
+      userId,
+      name: `${source.name} (clone)`,
+      description: source.description,
+      color: source.color,
+      locations: {
+        create: source.locations.map((l) => ({
+          locationId: l.locationId,
+          sortOrder: l.sortOrder,
+          notes: l.notes,
+        })),
+      },
+    },
+  });
+  revalidateAppPaths("/trips");
+  return clone;
 }
 
 async function assertOwns(userId: string, tripId: string) {

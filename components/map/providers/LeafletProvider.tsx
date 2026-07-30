@@ -1,24 +1,70 @@
 "use client";
 
-import { useCallback } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, useMapEvents } from "react-leaflet";
+import { useState } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  CircleMarker,
+  Circle,
+  Marker,
+  Polyline,
+  Tooltip,
+  useMapEvents,
+} from "react-leaflet";
+import L from "leaflet";
+import { useTranslations } from "next-intl";
 import { useMapStore } from "@/lib/store/map";
 import { useSettingsStore } from "@/lib/store/settings";
 import type { MapViewProps } from "@/lib/map/types";
 import { MapStyleSwitcher } from "@/components/map/shared/MapStyleSwitcher";
 import { LEAFLET_TILE_URLS } from "@/lib/map/types";
 import { cn } from "@/lib/utils";
+import { useMapClusters } from "@/hooks/use-map-clusters";
 import "leaflet/dist/leaflet.css";
 
-function ClickHandler({ isAdding, onMapClick }: { isAdding?: boolean; onMapClick?: (c: { lat: number; lng: number }) => void }) {
-  useMapEvents({
+/** Fires click + reports zoom/bounds to parent state. */
+function MapEventHandler({
+  clickEnabled,
+  onMapClick,
+  onViewChange,
+}: {
+  clickEnabled?: boolean;
+  onMapClick?: (c: { lat: number; lng: number }) => void;
+  onViewChange: (zoom: number, bounds: [number, number, number, number]) => void;
+}) {
+  const map = useMapEvents({
     click(e) {
-      if (isAdding && onMapClick) {
+      if (clickEnabled && onMapClick) {
         onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
       }
     },
+    moveend() {
+      const b = map.getBounds();
+      onViewChange(map.getZoom(), [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+    },
+    zoomend() {
+      const b = map.getBounds();
+      onViewChange(map.getZoom(), [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+    },
   });
   return null;
+}
+
+/** DivIcon factory for cluster bubbles — created lazily to avoid SSR issues. */
+function clusterIcon(count: number): L.DivIcon {
+  const size = count > 99 ? 42 : 36;
+  return L.divIcon({
+    html: `<div style="
+      background:#2563eb;border:3px solid #fff;border-radius:50%;
+      color:#fff;display:flex;align-items:center;justify-content:center;
+      font-weight:700;font-size:${count > 99 ? 11 : 13}px;
+      width:${size}px;height:${size}px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;
+    ">${count}</div>`,
+    className: "",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
 }
 
 export default function LeafletProvider({
@@ -27,11 +73,29 @@ export default function LeafletProvider({
   onLocationClick,
   onMapClick,
   isAddingLocation,
+  measureMode,
+  measurePoints = [],
+  radiusCenter,
+  radiusKm,
+  tripPolyline,
   className,
 }: MapViewProps) {
-  const { viewState } = useMapStore();
+  const t = useTranslations("map");
+  const { viewState, setViewState } = useMapStore();
   const { mapStyle, setMapStyle } = useSettingsStore();
   const tileUrl = LEAFLET_TILE_URLS[mapStyle] ?? LEAFLET_TILE_URLS.osm;
+
+  const [zoom, setZoom] = useState(viewState.zoom);
+  const [bounds, setBounds] = useState<[number, number, number, number] | null>(null);
+
+  const clusters = useMapClusters(locations, zoom, bounds);
+  const clickEnabled = Boolean(isAddingLocation || measureMode);
+
+  function handleViewChange(z: number, b: [number, number, number, number]) {
+    setZoom(z);
+    setBounds(b);
+    setViewState({ ...viewState, zoom: z });
+  }
 
   return (
     <div className={cn("relative w-full h-full", className)}>
@@ -45,25 +109,90 @@ export default function LeafletProvider({
           url={tileUrl}
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         />
-        <ClickHandler isAdding={isAddingLocation} onMapClick={onMapClick} />
-        {locations.map((loc) => (
+        <MapEventHandler
+          clickEnabled={clickEnabled}
+          onMapClick={onMapClick}
+          onViewChange={handleViewChange}
+        />
+
+        {radiusCenter && radiusKm != null && radiusKm > 0 && (
+          <Circle
+            center={[radiusCenter.lat, radiusCenter.lng]}
+            radius={radiusKm * 1000}
+            pathOptions={{ color: "#2563eb", fillColor: "#2563eb", fillOpacity: 0.08, weight: 2 }}
+          />
+        )}
+
+        {measurePoints.length >= 2 && (
+          <Polyline
+            positions={measurePoints.map((p) => [p.lat, p.lng] as [number, number])}
+            pathOptions={{ color: "#f59e0b", weight: 3, dashArray: "6 6" }}
+          />
+        )}
+        {measurePoints.map((p, i) => (
           <CircleMarker
-            key={loc.id}
-            center={[loc.latitude, loc.longitude]}
-            radius={loc.id === selectedId ? 12 : 9}
-            pathOptions={{
-              color: "#fff",
-              fillColor: loc.categoryColor,
-              fillOpacity: 0.9,
-              weight: loc.id === selectedId ? 3 : 2,
-            }}
-            eventHandlers={{ click: () => onLocationClick(loc.id) }}
-          >
-            <Tooltip permanent={false} direction="top" offset={[0, -10]}>
-              {loc.title}
-            </Tooltip>
-          </CircleMarker>
+            key={`measure-${i}`}
+            center={[p.lat, p.lng]}
+            radius={7}
+            pathOptions={{ color: "#fff", fillColor: "#f59e0b", fillOpacity: 1, weight: 2 }}
+          />
         ))}
+
+        {tripPolyline && tripPolyline.length >= 2 && (
+          <Polyline
+            positions={tripPolyline.map((p) => [p.lat, p.lng] as [number, number])}
+            pathOptions={{
+              color: tripPolyline[0]?.color ?? "#f59e0b",
+              weight: 4,
+              opacity: 0.9,
+              className: "trip-trail-draw",
+            }}
+          />
+        )}
+
+        {clusters.map((item) => {
+          if (item.type === "cluster") {
+            return (
+              <Marker
+                key={`cluster-${item.id}`}
+                position={[item.lat, item.lng]}
+                icon={clusterIcon(item.count)}
+                eventHandlers={{
+                  click() {
+                    setViewState({
+                      latitude: item.lat,
+                      longitude: item.lng,
+                      zoom: item.expansionZoom,
+                    });
+                    setZoom(item.expansionZoom);
+                  },
+                }}
+              />
+            );
+          }
+
+          const loc = item.location;
+          const selected = loc.id === selectedId;
+          return (
+            <CircleMarker
+              key={loc.id}
+              center={[loc.latitude, loc.longitude]}
+              radius={selected ? 13 : 9}
+              pathOptions={{
+                color: "#fff",
+                fillColor: loc.categoryColor,
+                fillOpacity: 0.95,
+                weight: selected ? 3 : 2,
+                className: selected ? "marker-breathe" : undefined,
+              }}
+              eventHandlers={{ click: () => onLocationClick(loc.id) }}
+            >
+              <Tooltip permanent={false} direction="top" offset={[0, -10]}>
+                {loc.title}
+              </Tooltip>
+            </CircleMarker>
+          );
+        })}
       </MapContainer>
 
       <MapStyleSwitcher
@@ -74,7 +203,12 @@ export default function LeafletProvider({
 
       {isAddingLocation && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-background border border-border rounded-xl px-4 py-2 text-sm font-medium shadow-lg animate-fade-in">
-          Click on the map to place your location
+          {t("tapToPlace")}
+        </div>
+      )}
+      {measureMode && !isAddingLocation && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-background border border-border rounded-xl px-4 py-2 text-sm font-medium shadow-lg animate-fade-in">
+          {t("clickToMeasure")}
         </div>
       )}
     </div>

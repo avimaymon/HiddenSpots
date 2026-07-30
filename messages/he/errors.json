@@ -1,0 +1,38 @@
+{
+
+  "notFound": "לא נמצא",
+
+  "notFoundTitle": "העמוד הזה יצא מהשביל",
+
+  "notFoundBody": "ייתכן שהקישור שבור, פג תוקף, או שהמקום הוסר. חזרו למפה או לדף הבית.",
+
+  "goToMap": "למפה",
+
+  "unauthorized": "יש להתחבר כדי לגשת לדף זה",
+
+  "forbidden": "אין לך הרשאה לגשת לתוכן זה",
+
+  "serverError": "שגיאת שרת, נסה שוב",
+
+  "networkError": "שגיאת רשת, בדוק חיבור לאינטרנט",
+
+  "somethingWentWrong": "משהו השתבש",
+
+  "tryAgain": "נסה שוב",
+
+  "tryAgainHint": "אפשר לנסות שוב — אם זה ממשיך, רעננו את העמוד.",
+
+  "errorId": "מזהה שגיאה: {id}",
+
+  "shareExpired": "קישור השיתוף פג תוקף",
+
+  "shareNotFound": "קישור שיתוף לא נמצא",
+
+  "uploadFailed": "העלאת קובץ נכשלה",
+
+  "importFailed": "ייבוא נכשל",
+
+  "exportFailed": "ייצוא נכשל"
+
+}
+

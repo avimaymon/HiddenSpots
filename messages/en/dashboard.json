@@ -1,0 +1,21 @@
+{
+  "title": "Dashboard",
+  "welcome": "Welcome",
+  "stats": {
+    "locations": "Locations",
+    "visits": "Visits",
+    "collections": "Collections",
+    "trips": "Trips",
+    "favorites": "Favorites",
+    "bucketList": "Bucket list"
+  },
+  "recentVisits": "Recent visits",
+  "favoriteSpots": "Favorite spots",
+  "noRecentVisits": "You haven't visited any spots yet",
+  "noFavorites": "No favorites yet",
+  "viewAll": "View all",
+  "smartViews": "Smart views",
+  "addSmartView": "Add view",
+  "noSmartViews": "No smart views yet",
+  "noSmartViewsHint": "Save common filters as a smart view"
+}

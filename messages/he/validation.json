@@ -1,0 +1,12 @@
+{
+  "required": "שדה חובה",
+  "tooShort": "קצר מדי (מינימום {min} תווים)",
+  "tooLong": "ארוך מדי (מקסימום {max} תווים)",
+  "invalidEmail": "כתובת אימייל לא תקינה",
+  "invalidUrl": "כתובת URL לא תקינה",
+  "invalidCoords": "קואורדינטות לא תקינות",
+  "latitudeRange": "קו רוחב חייב להיות בין -90 ל-90",
+  "longitudeRange": "קו אורך חייב להיות בין -180 ל-180",
+  "passwordTooShort": "סיסמה חייבת להכיל לפחות 8 תווים",
+  "passwordsNoMatch": "הסיסמאות אינן תואמות"
+}

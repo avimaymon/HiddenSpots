@@ -9,5 +9,19 @@
   "nearby": "Nearby",
   "fullscreen": "Fullscreen",
   "radiusSearch": "Radius search",
-  "clickToMeasure": "Click the map to measure distance"
+  "clickToMeasure": "Click the map to measure distance",
+  "distanceResult": "Distance: {km} km",
+  "radiusActive": "Radius {km} km",
+  "centeredOnLocation": "Centered on your location",
+  "couldNotGetLocation": "Could not get location",
+  "cancel": "Cancel",
+  "searchSpots": "Search spots",
+  "searchPlaceholder": "Name, category, tag…",
+  "allSpots": "All spots",
+  "noResults": "No results found",
+  "gpsAddReady": "GPS ready — add your spot",
+  "addAtGpsHint": "Long-press: add at current location",
+  "createFromPhoto": "From photo",
+  "exifNoGps": "No GPS found in photo",
+  "exifGpsReady": "Photo GPS ready"
 }

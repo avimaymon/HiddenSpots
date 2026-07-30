@@ -31,6 +31,11 @@ export const locationSchema = z.object({
   privacy: z.enum(["PRIVATE", "SHARED", "PUBLIC", "SECRET"]).default("PRIVATE"),
   fuzzyCoordinates: z.boolean().default(false),
   fuzzyRadiusMeters: z.number().default(500),
+  tips: z.string().max(2000).optional(),
+  vibes: z.array(z.string()).default([]),
+  hazardNote: z.string().max(500).optional(),
+  hazardExpiresAt: z.string().optional(),
+  accessibilityLevel: z.string().optional(),
 });
 
 export type LocationFormData = z.infer<typeof locationSchema>;
@@ -41,6 +46,7 @@ export const collectionSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#6366f1"),
   icon: z.string().default("folder"),
   privacy: z.enum(["PRIVATE", "SHARED", "PUBLIC", "SECRET"]).default("PRIVATE"),
+  parentId: z.string().nullable().optional(),
 });
 
 export const visitSchema = z.object({

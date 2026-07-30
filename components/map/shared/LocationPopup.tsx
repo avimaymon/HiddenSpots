@@ -1,6 +1,5 @@
 import type { MapLocation } from "@/lib/map/types";
 import { Heart, Eye } from "lucide-react";
-import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { QuickNavButtons } from "@/components/shared/QuickNavButtons";
 

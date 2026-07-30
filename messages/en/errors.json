@@ -1,0 +1,38 @@
+{
+
+  "notFound": "Not found",
+
+  "notFoundTitle": "This page wandered off the trail",
+
+  "notFoundBody": "The link may be broken, expired, or the spot was removed. Head back to the map or home.",
+
+  "goToMap": "Open map",
+
+  "unauthorized": "Please sign in to access this page",
+
+  "forbidden": "You don't have permission to access this content",
+
+  "serverError": "Server error, please try again",
+
+  "networkError": "Network error, check your internet connection",
+
+  "somethingWentWrong": "Something went wrong",
+
+  "tryAgain": "Try again",
+
+  "tryAgainHint": "You can retry — if it keeps happening, refresh the page.",
+
+  "errorId": "Error ID: {id}",
+
+  "shareExpired": "This share link has expired",
+
+  "shareNotFound": "Share link not found",
+
+  "uploadFailed": "File upload failed",
+
+  "importFailed": "Import failed",
+
+  "exportFailed": "Export failed"
+
+}
+

@@ -19,5 +19,13 @@
   "done": "סיום",
   "view": "צפייה",
   "create": "צור",
-  "offline": "אין חיבור — השינויים יסתנכרנו כשתתחבר"
+  "offline": "אין חיבור — השינויים יסתנכרנו כשתתחבר",
+  "skipToContent": "דלג לתוכן",
+  "feedback": "משוב",
+  "feedbackHint": "מצאת באג בשטח? רעיון לשיפור? כתבו לנו בקצרה.",
+  "feedbackPlaceholder": "מה אפשר לשפר?",
+  "sendFeedback": "שלח משוב",
+  "feedbackThanks": "תודה! המשוב התקבל",
+  "feedbackFailed": "שליחת המשוב נכשלה",
+  "sending": "שולח…"
 }

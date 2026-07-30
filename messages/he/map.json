@@ -9,5 +9,19 @@
   "nearby": "בקרבתי",
   "fullscreen": "מסך מלא",
   "radiusSearch": "חיפוש ברדיוס",
-  "clickToMeasure": "לחץ על המפה למדידת מרחק"
+  "clickToMeasure": "לחץ על המפה למדידת מרחק",
+  "distanceResult": "מרחק: {km} ק״מ",
+  "radiusActive": "רדיוס {km} ק״מ",
+  "centeredOnLocation": "מרוכז על המיקום שלך",
+  "couldNotGetLocation": "לא ניתן לקבל מיקום",
+  "cancel": "ביטול",
+  "searchSpots": "חפש מיקומים",
+  "searchPlaceholder": "שם, קטגוריה, תגית…",
+  "allSpots": "כל המיקומים",
+  "noResults": "לא נמצאו תוצאות",
+  "gpsAddReady": "מיקום GPS מוכן — הוסף מיקום",
+  "addAtGpsHint": "לחיצה ארוכה: הוסף במיקום הנוכחי",
+  "createFromPhoto": "מתוך תמונה",
+  "exifNoGps": "לא נמצא GPS בתמונה",
+  "exifGpsReady": "מיקום מהתמונה מוכן"
 }

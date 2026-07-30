@@ -1,0 +1,22 @@
+{
+  "backToApp": "Back to app",
+  "updated": "Last updated: July 2026",
+  "privacyTitle": "Privacy Policy",
+  "privacyIntro": "HiddenSpots protects your private nature spots. We do not sell personal data and we do not expose SECRET coordinates without your consent.",
+  "privacyDataTitle": "What we store",
+  "privacyData": "Account (name, email), locations you create, visits, collections, trips, uploaded photos, and map/language preferences. Data lives in PostgreSQL (Neon); photos use Vercel Blob when configured.",
+  "privacyShareTitle": "Sharing",
+  "privacyShare": "Share links are optional. SECRET locations show fuzzed coordinates. You can revoke a link anytime.",
+  "privacyRightsTitle": "Your rights",
+  "privacyRights": "Export all data or permanently delete your account from Settings. Deletion is irreversible.",
+  "privacyContactTitle": "Contact",
+  "privacyContact": "For privacy questions, contact the app operator via your published support channel.",
+  "termsTitle": "Terms of Use",
+  "termsIntro": "You use HiddenSpots at your own risk. It is a personal nature atlas — not a substitute for official maps or safety advice.",
+  "termsUseTitle": "Acceptable use",
+  "termsUse": "Do not share sensitive spots without permission, upload illegal content, or attempt to harm the service or other users.",
+  "termsContentTitle": "Your content",
+  "termsContent": "You retain ownership of content you upload. You grant us a license to store and display it to operate the service.",
+  "termsLiabilityTitle": "Liability",
+  "termsLiability": "The service is provided as-is. We are not liable for field accidents, navigation errors, or data loss beyond what the law requires."
+}

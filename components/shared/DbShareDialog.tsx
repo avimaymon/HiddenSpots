@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Link2, Loader2, Copy, Check } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { Link2, Loader2, Copy, Check, Share as ShareIcon, Calendar, QrCode } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -10,8 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createShare } from "@/lib/actions/shares";
-import { copyToClipboard } from "@/lib/navigation/external-links";
+import { useShare } from "@/hooks/use-share";
 import { toast } from "@/hooks/use-toast";
+import { track } from "@/lib/analytics";
 
 interface Props {
   open: boolean;
@@ -30,27 +33,37 @@ export function DbShareDialog({
   tripId,
   title,
 }: Props) {
+  const t = useTranslations("sharing");
+  const tc = useTranslations("common");
+  const { share, canNativeShare } = useShare();
   const [loading, setLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   const [permission, setPermission] = useState<"VIEW" | "COMMENT" | "EDIT">("VIEW");
   const [email, setEmail] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
 
   async function handleCreate() {
     setLoading(true);
     try {
-      const share = await createShare({
+      const created = await createShare({
         permission,
         sharedWithEmail: email.trim() || undefined,
         locationId,
         collectionId,
         tripId,
+        expiresAt: expiresAt || undefined,
       });
-      const url = `${window.location.origin}/share/${share.publicToken}`;
+      const locale = window.location.pathname.split("/")[1] || "he";
+      const url = `${window.location.origin}/${locale}/share/${created.publicToken}`;
       setShareUrl(url);
-      toast({ title: "Share link created", variant: "success" });
+      setShareId(created.id);
+      track("share", { method: "create_link", permission });
+      toast({ title: t("linkCreated"), variant: "success" });
     } catch (e) {
-      toast({ title: "Failed to create share", description: String(e), variant: "destructive" });
+      toast({ title: t("createFailed"), description: String(e), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -58,21 +71,36 @@ export function DbShareDialog({
 
   async function handleCopy() {
     if (!shareUrl) return;
-    const ok = await copyToClipboard(shareUrl);
-    if (ok) {
+    const result = await share({
+      title: title ? t("shareTitleNamed", { title }) : t("shareTitle"),
+      url: shareUrl,
+    });
+    if (result === "copied" || result === "shared") {
       setCopied(true);
-      toast({ title: "Link copied", variant: "success" });
+      toast({ title: t("linkCopied"), variant: "success" });
       setTimeout(() => setCopied(false), 2000);
+    } else if (result === "failed") {
+      toast({ title: t("linkCopyFailed"), variant: "destructive" });
     }
   }
 
-  function handleClose(open: boolean) {
-    if (!open) {
+  async function handleNativeShare() {
+    if (!shareUrl) return;
+    await share({
+      title: title ? t("shareTitleNamed", { title }) : t("shareTitle"),
+      url: shareUrl,
+    });
+  }
+
+  function handleClose(next: boolean) {
+    if (!next) {
       setShareUrl(null);
+      setShareId(null);
       setEmail("");
+      setExpiresAt("");
       setPermission("VIEW");
     }
-    onOpenChange(open);
+    onOpenChange(next);
   }
 
   return (
@@ -81,44 +109,74 @@ export function DbShareDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Link2 className="h-4 w-4 text-primary" />
-            Share {title ? `"${title}"` : "Link"}
+            {title ? t("shareNamed", { title }) : t("shareLink")}
           </DialogTitle>
         </DialogHeader>
 
         {shareUrl ? (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Anyone with this link can view the shared content.
-            </p>
+          <div className="space-y-3 animate-scale-in">
+            <div className="flex justify-center py-1">
+              <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center share-check-pop">
+                <Check className="h-7 w-7 text-primary" strokeWidth={2.5} />
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground text-center">{t("anyoneWithLink")}</p>
             <div className="flex gap-2">
               <Input value={shareUrl} readOnly className="font-mono text-xs h-10" />
-              <Button size="icon" variant="outline" onClick={handleCopy} className="shrink-0 rounded-xl">
+              <Button size="icon" variant="outline" onClick={handleCopy} className="shrink-0 rounded-xl" aria-label={t("copyLink")}>
                 {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
+            {canNativeShare && (
+              <Button variant="secondary" className="w-full rounded-xl" onClick={handleNativeShare}>
+                <ShareIcon className="h-4 w-4" /> {t("shareNative")}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="w-full rounded-xl gap-1.5" onClick={() => setShowQr((v) => !v)}>
+              <QrCode className="h-3.5 w-3.5" /> {showQr ? "Hide QR" : "Show QR code"}
+            </Button>
+            {showQr && (
+              <div className="flex justify-center py-2">
+                <QRCodeSVG value={shareUrl} size={180} className="rounded-xl" />
+              </div>
+            )}
+            {shareId && (
+              <p className="text-xs text-muted-foreground">{t("manageHint")}</p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Permission</Label>
+              <Label>{t("permission")}</Label>
               <Select value={permission} onValueChange={(v) => setPermission(v as typeof permission)}>
                 <SelectTrigger className="rounded-xl h-11">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="VIEW">View only</SelectItem>
-                  <SelectItem value="COMMENT">Can comment</SelectItem>
-                  <SelectItem value="EDIT">Can edit</SelectItem>
+                  <SelectItem value="VIEW">{t("permView")}</SelectItem>
+                  <SelectItem value="COMMENT">{t("permComment")}</SelectItem>
+                  <SelectItem value="EDIT">{t("permEdit")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Invite by email (optional)</Label>
+              <Label>{t("inviteEmail")}</Label>
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="friend@example.com"
+                placeholder={t("emailPlaceholder")}
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" /> {t("expiresAt")}
+              </Label>
+              <Input
+                type="datetime-local"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
                 className="h-11"
               />
             </div>
@@ -127,12 +185,12 @@ export function DbShareDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleClose(false)}>
-            {shareUrl ? "Close" : "Cancel"}
+            {shareUrl ? tc("close") : tc("cancel")}
           </Button>
           {!shareUrl && (
             <Button onClick={handleCreate} disabled={loading}>
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create Link
+              {t("createLink")}
             </Button>
           )}
         </DialogFooter>

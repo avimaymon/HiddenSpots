@@ -1,0 +1,23 @@
+# HiddenSpots
+
+> Your personal atlas of nature's hidden gems — springs, waterfalls, and trails.
+> Hebrew-first · map-first · private by default · field-ready offline.
+
+## Site
+
+- Home (Hebrew): https://hiddenspots.app/he
+- Home (English): https://hiddenspots.app/en
+- Sign in: /he/signin · /en/signin
+- Sign up: /he/signup · /en/signup
+- Privacy: /he/privacy · /en/privacy
+- Terms: /he/terms · /en/terms
+
+## Product
+
+HiddenSpots lets people save secret nature spots on a map, organize them into collections and trips, share via expiring links, and use the app offline as a PWA.
+
+Authenticated map and library routes (`/app`, `/locations`, `/collections`, `/trips`, `/visits`, `/settings`, `/import`) are private and should not be crawled.
+
+## Full catalog
+
+See /llms-full.txt for a longer description.

@@ -3,6 +3,8 @@
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 import { Github, Chrome, Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
 export function SignInForm() {
+  const t = useTranslations("auth");
   const params = useSearchParams();
   const callbackUrl = params.get("callbackUrl") ?? "/he/app";
   const [loading, setLoading] = useState<string | null>(null);
@@ -45,7 +48,7 @@ export function SignInForm() {
           ) : (
             <Chrome className="h-4 w-4" />
           )}
-          Continue with Google
+          {t("continueGoogle")}
         </Button>
 
         <Button
@@ -59,35 +62,40 @@ export function SignInForm() {
           ) : (
             <Github className="h-4 w-4" />
           )}
-          Continue with GitHub
+          {t("continueGitHub")}
         </Button>
       </div>
 
       <div className="relative py-1">
         <Separator />
         <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-3 text-xs text-muted-foreground font-medium">
-          or with email
+          {t("orEmail")}
         </span>
       </div>
 
       <form onSubmit={handleEmail} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{t("email")}</Label>
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Mail className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
               id="email"
               name="email"
               type="email"
               placeholder="you@example.com"
-              className="pl-10 h-11"
+              className="ps-10 h-11"
               required
               autoComplete="email"
             />
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="password">{t("password")}</Label>
+            <Link href="/forgot-password" className="text-xs text-primary hover:underline">
+              {t("forgotPassword")}
+            </Link>
+          </div>
           <Input
             id="password"
             name="password"
@@ -100,15 +108,20 @@ export function SignInForm() {
         </div>
         <Button type="submit" className="w-full h-11 font-semibold" disabled={!!loading}>
           {loading === "email" && <Loader2 className="h-4 w-4 animate-spin" />}
-          Sign In
+          {t("signIn")}
         </Button>
       </form>
 
       <p className="text-center text-xs text-muted-foreground leading-relaxed">
-        By signing in, you agree to our{" "}
-        <a href="#" className="text-primary hover:underline font-medium">Terms</a>
-        {" "}and{" "}
-        <a href="#" className="text-primary hover:underline font-medium">Privacy Policy</a>.
+        {t("agreePrefix")}{" "}
+        <Link href="/terms" className="text-primary hover:underline font-medium">
+          {t("terms")}
+        </Link>{" "}
+        {t("and")}{" "}
+        <Link href="/privacy" className="text-primary hover:underline font-medium">
+          {t("privacy")}
+        </Link>
+        .
       </p>
     </div>
   );

@@ -33,11 +33,12 @@ function parseGeoJSON(text: string): ImportPreview {
         ? [data]
         : [];
 
-  const locations: Partial<LocationFormData>[] = features
-    .filter((f: any) => f.geometry?.type === "Point")
-    .map((f: any) => ({
+  type GeoFeature = { geometry: { type: string; coordinates: number[] }; properties: Record<string, string | null> };
+  const locations: Partial<LocationFormData>[] = (features as GeoFeature[])
+    .filter((f) => f.geometry?.type === "Point")
+    .map((f) => ({
       title: f.properties?.name ?? f.properties?.title ?? "Imported Location",
-      description: f.properties?.description,
+      description: f.properties?.description ?? undefined,
       longitude: f.geometry.coordinates[0],
       latitude: f.geometry.coordinates[1],
       altitude: f.geometry.coordinates[2],
