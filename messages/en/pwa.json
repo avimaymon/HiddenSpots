@@ -12,5 +12,14 @@
   "synced": "All changes synced",
   "offlineBanner": "Offline",
   "installHint": "Add to home screen for quick field access",
-  "dismiss": "Dismiss"
+  "dismiss": "Dismiss",
+  "syncFailed": "{count, plural, one {1 sync failed} other {# syncs failed}}",
+  "syncPartial": "Some changes did not sync",
+  "retrySync": "Retry sync",
+  "dropStuck": "Drop stuck",
+  "droppedStuck": "Dropped {count} stuck items",
+  "offlineUnavailableTitle": "Unavailable offline",
+  "offlineUnavailableMaps": "Address search / online map layers",
+  "offlineUnavailableShare": "Creating new share links",
+  "offlineUnavailableWeather": "Live weather"
 }

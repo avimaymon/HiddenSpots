@@ -4,18 +4,25 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MapPin, FolderOpen, Share2, Cloud } from "lucide-react";
+import { MapPin, FolderOpen, Share2, Map, Cloud } from "lucide-react";
 import { markOnboarded } from "@/lib/actions/settings";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Link } from "@/i18n/navigation";
 
 interface Props {
   open: boolean;
   onComplete: () => void;
 }
 
-const STEPS = ["step1", "step2", "step3", "step4"] as const;
-const STEP_ICONS = [MapPin, FolderOpen, Share2, Cloud] as const;
-const STEP_TITLE_KEYS = ["welcome", "welcome", "welcome", "step4Title"] as const;
+const STEPS = ["step1", "step2", "step3", "stepMyMaps", "step4"] as const;
+const STEP_ICONS = [MapPin, FolderOpen, Share2, Map, Cloud] as const;
+const STEP_TITLE_KEYS = [
+  "welcome",
+  "welcome",
+  "welcome",
+  "stepMyMapsTitle",
+  "step4Title",
+] as const;
 
 export function OnboardingDialog({ open, onComplete }: Props) {
   const t = useTranslations("onboarding");
@@ -28,6 +35,7 @@ export function OnboardingDialog({ open, onComplete }: Props) {
   }
 
   const isLastStep = step === STEPS.length - 1;
+  const isMyMaps = STEPS[step] === "stepMyMaps";
   const Icon = STEP_ICONS[step];
 
   return (
@@ -47,7 +55,13 @@ export function OnboardingDialog({ open, onComplete }: Props) {
               >
                 <Icon
                   className="h-9 w-9 text-primary"
-                  style={step === 3 ? { color: "#1a73e8" } : undefined}
+                  style={
+                    isLastStep
+                      ? { color: "#1a73e8" }
+                      : isMyMaps
+                        ? { color: "#34a853" }
+                        : undefined
+                  }
                 />
               </motion.div>
             </AnimatePresence>
@@ -72,6 +86,12 @@ export function OnboardingDialog({ open, onComplete }: Props) {
               {t(STEPS[step])}
             </motion.p>
           </AnimatePresence>
+
+          {isMyMaps && (
+            <Button asChild variant="secondary" className="w-full rounded-xl" onClick={finish}>
+              <Link href="/import">{t("stepMyMapsCta")}</Link>
+            </Button>
+          )}
 
           <div className="flex gap-1.5 justify-center pb-1">
             {STEPS.map((_, i) => (

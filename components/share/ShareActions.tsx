@@ -23,14 +23,25 @@ export function ShareActions({ title, url, text }: Props) {
   const href =
     url ?? (typeof window !== "undefined" ? window.location.href : "");
 
+  const locale =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "he"
+      : "he";
+
   const links = useMemo(
-    () => (href ? socialLinks(href, title) : null),
-    [href, title, socialLinks]
+    () => (href ? socialLinks(href, title, { locale, text }) : null),
+    [href, title, socialLinks, locale, text]
   );
 
   async function handleNativeShare() {
     if (!href) return;
-    const result = await share({ title, text, url: href });
+    const result = await share({
+      title,
+      text: text ?? (locale.startsWith("he")
+        ? `מצאתי מקום מושלם ב-HiddenSpots: ${title}`
+        : `Found a great spot on HiddenSpots: ${title}`),
+      url: href,
+    });
     if (result === "failed") {
       toast({ title: t("linkCopyFailed"), variant: "destructive" });
     } else if (result === "copied") {

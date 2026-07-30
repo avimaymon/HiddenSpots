@@ -24,6 +24,10 @@
   "logFailed": "Could not log visit",
   "saveVisit": "Save visit",
   "imHere": "I'm here",
+  "imHereWithPhoto": "I'm here + photo",
   "imHereDone": "Logged!",
-  "imHereFar": "You seem {distance} away — log anyway?"
+  "imHereFar": "You seem {distance} away — log anyway?",
+  "addPhotoOptional": "Add photo (optional)",
+  "removePhoto": "Remove photo",
+  "photoUploadFailed": "Visit logged, but photo upload failed"
 }

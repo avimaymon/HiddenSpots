@@ -71,6 +71,11 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
     { label: t("stats.bucketList"), value: stats.bucketList, icon: Bookmark, color: "text-amber-500", href: "/locations" },
   ];
 
+  const weekStats = [
+    { label: t("week.spotsAdded"), value: stats.weekLocationsAdded },
+    { label: t("week.visits"), value: stats.weekVisits },
+  ];
+
   return (
     <FadeIn className="flex flex-col h-full min-h-0 overflow-auto">
       <PageHeader
@@ -104,6 +109,23 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
 
       <div className="p-4 sm:p-6 space-y-6">
         <SmartViewsSection initialViews={smartViews as Parameters<typeof SmartViewsSection>[0]["initialViews"]} />
+
+        {(stats.weekLocationsAdded > 0 || stats.weekVisits > 0 || stats.totalLocations > 0) && (
+          <div className="rounded-2xl border border-border/50 bg-card/60 p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              <p className="text-sm font-semibold">{t("week.title")}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {weekStats.map((w) => (
+                <div key={w.label} className="rounded-xl bg-muted/40 px-3 py-2.5">
+                  <p className="text-2xl font-bold tabular-nums">{w.value}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{w.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Explorer rank + streak + surprise */}
         {!hidden.has("rank") && <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

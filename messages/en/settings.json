@@ -74,5 +74,11 @@
   "restore": "Restore",
   "restored": "Spot restored",
   "purgeConfirm": "Permanently delete? This cannot be undone.",
-  "purged": "Permanently deleted"
+  "purged": "Permanently deleted",
+  "opsTitle": "Ops health",
+  "opsWebhookHint": "For live error alerts set ERROR_WEBHOOK_URL on Vercel (Slack/Discord Incoming Webhook). The secret stays server-side only.",
+  "opsSmokeHint": "Automated smoke checks run in GitHub Actions against /api/health and /he.",
+  "opsDriveHint": "Run Drive “test restore” after any big trip.",
+  "opsFieldChecklist": "Field checklist",
+  "opsFieldChecklistHint": "Track real outdoor use for 1–2 weeks (docs/FIELD_CHECKLIST.md)."
 }

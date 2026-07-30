@@ -20,12 +20,26 @@ export interface SocialShareLinks {
   reddit: string;
 }
 
-function buildSocialLinks(url: string, title: string): SocialShareLinks {
+/** Hebrew-first WhatsApp body — title + short CTA + deep link. */
+export function buildWhatsAppText(url: string, title: string, localeHint = "he"): string {
+  if (localeHint.startsWith("he")) {
+    return `מצאתי מקום מושלם ב-HiddenSpots: ${title}\n\nלחצו לפתיחה:\n${url}`;
+  }
+  return `Found a great spot on HiddenSpots: ${title}\n\nOpen here:\n${url}`;
+}
+
+function buildSocialLinks(
+  url: string,
+  title: string,
+  opts?: { locale?: string; text?: string }
+): SocialShareLinks {
   const u = encodeURIComponent(url);
   const t = encodeURIComponent(title);
-  const body = encodeURIComponent(`${title}\n${url}`);
+  const waBody = encodeURIComponent(
+    opts?.text?.trim() || buildWhatsAppText(url, title, opts?.locale ?? "he")
+  );
   return {
-    whatsapp: `https://wa.me/?text=${body}`,
+    whatsapp: `https://wa.me/?text=${waBody}`,
     telegram: `https://t.me/share/url?url=${u}&text=${t}`,
     x: `https://twitter.com/intent/tweet?url=${u}&text=${t}`,
     linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${u}`,
@@ -60,7 +74,7 @@ export function useShare() {
         try {
           await navigator.share({
             title: payload.title,
-            text: payload.text,
+            text: payload.text ?? buildWhatsAppText(payload.url, payload.title),
             url: payload.url,
           });
           track("share", { method: "native" });
@@ -82,12 +96,13 @@ export function useShare() {
   }, []);
 
   const socialLinks = useCallback(
-    (url: string, title: string) => buildSocialLinks(url, title),
+    (url: string, title: string, opts?: { locale?: string; text?: string }) =>
+      buildSocialLinks(url, title, opts),
     []
   );
 
   return useMemo(
-    () => ({ share, canNativeShare, socialLinks, busy, buildSocialLinks }),
+    () => ({ share, canNativeShare, socialLinks, busy, buildSocialLinks, buildWhatsAppText }),
     [share, canNativeShare, socialLinks, busy]
   );
 }

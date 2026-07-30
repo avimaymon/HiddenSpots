@@ -23,6 +23,7 @@
   "locationAdded": "Added to collection",
   "locationAddFailed": "Failed to add to collection",
   "shareCollection": "Share collection",
+  "invitePartner": "Invite hiking partner",
   "noLocations": "Collection is empty",
   "noLocationsHint": "Add locations from the map",
   "addToCollectionTitle": "Add to Collection",

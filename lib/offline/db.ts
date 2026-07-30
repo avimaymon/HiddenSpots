@@ -19,6 +19,7 @@ export interface SyncQueueItem {
   payload: string;
   createdAt: string;
   retries: number;
+  lastError?: string;
 }
 
 class HiddenSpotsDB extends Dexie {
@@ -30,6 +31,11 @@ class HiddenSpotsDB extends Dexie {
     this.version(2).stores({
       locations: "id, updatedAt, isFavorite, isVisited",
       syncQueue: "++id, createdAt, action",
+    });
+    // v3: lastError on queue items (schema-less extra fields are fine in Dexie)
+    this.version(3).stores({
+      locations: "id, updatedAt, isFavorite, isVisited",
+      syncQueue: "++id, createdAt, action, retries",
     });
   }
 }
@@ -84,22 +90,61 @@ export async function enqueueSync(
   });
 }
 
+const MAX_RETRIES = 8;
+
 export async function flushSyncQueue(
   handler: (item: SyncQueueItem) => Promise<void>
-) {
-  if (!offlineDb) return;
+): Promise<{ synced: number; failed: number }> {
+  if (!offlineDb) return { synced: 0, failed: 0 };
   const items = await offlineDb.syncQueue.orderBy("createdAt").toArray();
+  let synced = 0;
+  let failed = 0;
   for (const item of items) {
     try {
       await handler(item);
       await offlineDb.syncQueue.delete(item.id!);
-    } catch {
-      await offlineDb.syncQueue.update(item.id!, { retries: item.retries + 1 });
+      synced++;
+    } catch (e) {
+      failed++;
+      const msg = e instanceof Error ? e.message : "sync failed";
+      await offlineDb.syncQueue.update(item.id!, {
+        retries: (item.retries ?? 0) + 1,
+        lastError: msg.slice(0, 200),
+      });
     }
   }
+  return { synced, failed };
 }
 
 export async function pendingSyncCount(): Promise<number> {
   if (!offlineDb) return 0;
   return offlineDb.syncQueue.count();
+}
+
+/** Items that failed at least once (still in queue). */
+export async function failedSyncCount(): Promise<number> {
+  if (!offlineDb) return 0;
+  return offlineDb.syncQueue.filter((i) => (i.retries ?? 0) > 0).count();
+}
+
+export async function getSyncQueueSummary(): Promise<{
+  pending: number;
+  failed: number;
+  stuck: number;
+  lastError: string | null;
+}> {
+  if (!offlineDb) return { pending: 0, failed: 0, stuck: 0, lastError: null };
+  const items = await offlineDb.syncQueue.toArray();
+  const failed = items.filter((i) => (i.retries ?? 0) > 0);
+  const stuck = items.filter((i) => (i.retries ?? 0) >= MAX_RETRIES);
+  const lastError = failed.sort((a, b) => b.retries - a.retries)[0]?.lastError ?? null;
+  return { pending: items.length, failed: failed.length, stuck: stuck.length, lastError };
+}
+
+/** Drop stuck items so the queue can move on (user-initiated). */
+export async function dropStuckSyncItems(): Promise<number> {
+  if (!offlineDb) return 0;
+  const stuck = await offlineDb.syncQueue.filter((i) => (i.retries ?? 0) >= MAX_RETRIES).toArray();
+  await Promise.all(stuck.map((i) => offlineDb!.syncQueue.delete(i.id!)));
+  return stuck.length;
 }

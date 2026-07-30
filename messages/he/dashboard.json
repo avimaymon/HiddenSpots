@@ -17,5 +17,10 @@
   "smartViews": "תצוגות חכמות",
   "addSmartView": "הוסף תצוגה",
   "noSmartViews": "עוד אין תצוגות חכמות",
-  "noSmartViewsHint": "שמור פילטרים נפוצים כתצוגה חכמה"
+  "noSmartViewsHint": "שמור פילטרים נפוצים כתצוגה חכמה",
+  "week": {
+    "title": "השבוע",
+    "spotsAdded": "נקודות שנוספו",
+    "visits": "ביקורים"
+  }
 }

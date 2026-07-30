@@ -74,5 +74,11 @@
   "restore": "שחזר",
   "restored": "המיקום שוחזר",
   "purgeConfirm": "למחוק לצמיתות? לא ניתן לבטל.",
-  "purged": "נמחק לצמיתות"
+  "purged": "נמחק לצמיתות",
+  "opsTitle": "בריאות המערכת",
+  "opsWebhookHint": "להתראות שגיאות בזמן אמת הגדירו ERROR_WEBHOOK_URL ב-Vercel (Slack/Discord Incoming Webhook). הסוד נשאר בשרת בלבד.",
+  "opsSmokeHint": "בדיקת smoke אוטומטית רצה ב-GitHub Actions על /api/health ו-/he.",
+  "opsDriveHint": "הריצו ״בדיקת שחזור״ בגיבוי Drive אחרי כל טיול גדול.",
+  "opsFieldChecklist": "רשימת שטח",
+  "opsFieldChecklistHint": "עקבו אחרי שימוש אמיתי בשבוע-שבועיים (docs/FIELD_CHECKLIST.md)."
 }

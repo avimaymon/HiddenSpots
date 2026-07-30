@@ -47,5 +47,13 @@
   "permComment": "Can comment",
   "permEdit": "Can edit",
   "activeShares": "Active shares",
-  "noActiveShares": "No active shares"
+  "noActiveShares": "No active shares",
+  "showQr": "Show QR code",
+  "hideQr": "Hide QR",
+  "invitePartnerTitle": "Invite a hiking partner",
+  "invitePartnerHint": "Send a link with comment access — they can leave field notes without editing your atlas.",
+  "invitePartnerCreate": "Create invite",
+  "invitePartnerReady": "Invite ready — send it on WhatsApp.",
+  "invitePartnerWhatsApp": "Send on WhatsApp",
+  "waShareBody": "Found a great spot on HiddenSpots: {title}\n\nOpen here:\n{url}"
 }

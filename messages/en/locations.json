@@ -1,7 +1,9 @@
 {
   "title": "My Locations",
   "empty": "No locations yet",
-  "emptyHint": "Tap + to add your first spot",
+  "emptyHint": "Add a spot from the map, or import a Google My Maps layer — atlas in a minute.",
+  "emptyCtaAdd": "Add spot on map",
+  "emptyCtaImport": "Import My Maps",
   "searchPlaceholder": "Search locations…",
   "addNew": "Add location",
   "savedTitle": "Location saved!",

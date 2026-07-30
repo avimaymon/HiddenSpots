@@ -1,16 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { OfflineBanner } from "@/components/shared/OfflineBanner";
 import { OnboardingDialog } from "@/components/onboarding/OnboardingDialog";
 import { PwaInstallPrompt } from "@/components/shared/PwaInstallPrompt";
 import { WhatsNewModal } from "@/components/shared/WhatsNewModal";
 import { FeedbackDialog } from "@/components/shared/FeedbackDialog";
 import { useVisualViewport } from "@/hooks/useVisualViewport";
-import { useSyncQueue } from "@/hooks/use-sync-queue";
 import { trackPageview } from "@/lib/analytics";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
 
 interface Props {
   onboarded: boolean;
@@ -27,7 +25,7 @@ function AnalyticsPageview() {
 export function ShellExtras({ onboarded }: Props) {
   const [dismissed, setDismissed] = useState(false);
   useVisualViewport();
-  useSyncQueue();
+  // OfflineBanner owns useSyncQueue — avoid double flush loops
 
   return (
     <>

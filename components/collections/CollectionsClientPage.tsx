@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "@/i18n/navigation";
 import Image from "next/image";
-import { Plus, FolderOpen, MapPin, Trash2, Loader2, Share2 } from "lucide-react";
+import { Plus, FolderOpen, MapPin, Trash2, Loader2, Share2, Users } from "lucide-react";
 import { DbShareDialog } from "@/components/shared/DbShareDialog";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,7 @@ export function CollectionsClientPage({ initialCollections }: Props) {
   const [color, setColor] = useState(COLORS[0]);
   const [parentId, setParentId] = useState<string>(NO_PARENT);
   const [loading, setLoading] = useState(false);
-  const [shareCol, setShareCol] = useState<{ id: string; name: string } | null>(null);
+  const [shareCol, setShareCol] = useState<{ id: string; name: string; partner?: boolean } | null>(null);
 
   const flat = useMemo(() => flattenCollections(collections), [collections]);
 
@@ -154,6 +154,15 @@ export function CollectionsClientPage({ initialCollections }: Props) {
                   )}
                 </Link>
                 <div className="px-4 pb-3 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-lg"
+                    title={t("invitePartner")}
+                    onClick={() => setShareCol({ id: col.id, name: col.name, partner: true })}
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                  </Button>
                   <Button variant="ghost" size="icon-sm" className="rounded-lg" onClick={() => setShareCol({ id: col.id, name: col.name })}>
                     <Share2 className="h-3.5 w-3.5" />
                   </Button>
@@ -173,6 +182,7 @@ export function CollectionsClientPage({ initialCollections }: Props) {
           onOpenChange={(o) => !o && setShareCol(null)}
           collectionId={shareCol.id}
           title={shareCol.name}
+          partnerInvite={Boolean(shareCol.partner)}
         />
       )}
 

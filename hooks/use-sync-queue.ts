@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useCallback, useState } from "react";
-import { flushSyncQueue, pendingSyncCount, type SyncQueueItem } from "@/lib/offline/db";
+import {
+  flushSyncQueue,
+  pendingSyncCount,
+  failedSyncCount,
+  getSyncQueueSummary,
+  dropStuckSyncItems,
+  type SyncQueueItem,
+} from "@/lib/offline/db";
 import {
   toggleFavorite,
   createLocation,
@@ -13,7 +20,6 @@ import { createVisit } from "@/lib/actions/visits";
 
 /**
  * Last-write-wins: queue order is FIFO by createdAt.
- * Server accepts each mutation as authoritative at apply time.
  * Ceiling: no vector clocks — upgrade to updatedAt comparison if multi-device conflicts appear.
  */
 export async function processSyncItem(item: SyncQueueItem) {
@@ -51,29 +57,55 @@ export async function processSyncItem(item: SyncQueueItem) {
 
 export function useSyncQueue() {
   const [pending, setPending] = useState(0);
+  const [failed, setFailed] = useState(0);
+  const [lastError, setLastError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
+  const refreshCounts = useCallback(async () => {
+    const summary = await getSyncQueueSummary();
+    setPending(summary.pending);
+    setFailed(summary.failed);
+    setLastError(summary.lastError);
+  }, []);
+
   const flush = useCallback(async () => {
-    if (syncing) return;
+    if (syncing) return { synced: 0, failed: 0 };
     setSyncing(true);
     try {
-      await flushSyncQueue(processSyncItem);
-      const count = await pendingSyncCount();
-      setPending(count);
+      const result = await flushSyncQueue(processSyncItem);
+      await refreshCounts();
+      return result;
     } finally {
       setSyncing(false);
     }
-  }, [syncing]);
+  }, [syncing, refreshCounts]);
+
+  const dropStuck = useCallback(async () => {
+    const n = await dropStuckSyncItems();
+    await refreshCounts();
+    return n;
+  }, [refreshCounts]);
 
   useEffect(() => {
-    pendingSyncCount().then(setPending);
-
-    const onOnline = () => flush();
+    const onOnline = () => {
+      void flush();
+    };
     window.addEventListener("online", onOnline);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (navigator.onLine) flush();
-    return () => window.removeEventListener("online", onOnline);
-  }, [flush]);
+    // Defer: Dexie counts are external store; avoid sync setState-in-effect
+    const boot = window.setTimeout(() => {
+      void refreshCounts();
+      if (navigator.onLine) void flush();
+    }, 0);
+    const id = window.setInterval(() => {
+      void pendingSyncCount().then(setPending);
+      void failedSyncCount().then(setFailed);
+    }, 15_000);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.clearTimeout(boot);
+      window.clearInterval(id);
+    };
+  }, [flush, refreshCounts]);
 
-  return { pending, syncing, flush };
+  return { pending, failed, lastError, syncing, flush, dropStuck, refreshCounts };
 }

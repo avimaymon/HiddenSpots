@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Link2, Loader2, Copy, Check, Share as ShareIcon, Calendar, QrCode } from "lucide-react";
+import {
+  Link2, Loader2, Copy, Check, Share as ShareIcon, Calendar, QrCode, MessageCircle, Users,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -12,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createShare } from "@/lib/actions/shares";
-import { useShare } from "@/hooks/use-share";
+import { useShare, buildWhatsAppText } from "@/hooks/use-share";
 import { toast } from "@/hooks/use-toast";
 import { track } from "@/lib/analytics";
 
@@ -23,6 +25,9 @@ interface Props {
   collectionId?: string;
   tripId?: string;
   title?: string;
+  /** Prefer COMMENT for hiking-partner invites (can leave notes). */
+  defaultPermission?: "VIEW" | "COMMENT" | "EDIT";
+  partnerInvite?: boolean;
 }
 
 export function DbShareDialog({
@@ -32,16 +37,20 @@ export function DbShareDialog({
   collectionId,
   tripId,
   title,
+  defaultPermission = "VIEW",
+  partnerInvite = false,
 }: Props) {
   const t = useTranslations("sharing");
   const tc = useTranslations("common");
-  const { share, canNativeShare } = useShare();
+  const { share, canNativeShare, socialLinks } = useShare();
   const [loading, setLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
-  const [permission, setPermission] = useState<"VIEW" | "COMMENT" | "EDIT">("VIEW");
+  const [permission, setPermission] = useState<"VIEW" | "COMMENT" | "EDIT">(
+    partnerInvite ? "COMMENT" : defaultPermission
+  );
   const [email, setEmail] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
 
@@ -60,7 +69,10 @@ export function DbShareDialog({
       const url = `${window.location.origin}/${locale}/share/${created.publicToken}`;
       setShareUrl(url);
       setShareId(created.id);
-      track("share", { method: "create_link", permission });
+      track("share", {
+        method: partnerInvite ? "invite_partner" : "create_link",
+        permission,
+      });
       toast({ title: t("linkCreated"), variant: "success" });
     } catch (e) {
       toast({ title: t("createFailed"), description: String(e), variant: "destructive" });
@@ -71,8 +83,10 @@ export function DbShareDialog({
 
   async function handleCopy() {
     if (!shareUrl) return;
+    const shareTitle = title ? t("shareTitleNamed", { title }) : t("shareTitle");
     const result = await share({
-      title: title ? t("shareTitleNamed", { title }) : t("shareTitle"),
+      title: shareTitle,
+      text: buildWhatsAppText(shareUrl, title ?? shareTitle),
       url: shareUrl,
     });
     if (result === "copied" || result === "shared") {
@@ -86,8 +100,10 @@ export function DbShareDialog({
 
   async function handleNativeShare() {
     if (!shareUrl) return;
+    const shareTitle = title ? t("shareTitleNamed", { title }) : t("shareTitle");
     await share({
-      title: title ? t("shareTitleNamed", { title }) : t("shareTitle"),
+      title: shareTitle,
+      text: buildWhatsAppText(shareUrl, title ?? shareTitle),
       url: shareUrl,
     });
   }
@@ -98,18 +114,37 @@ export function DbShareDialog({
       setShareId(null);
       setEmail("");
       setExpiresAt("");
-      setPermission("VIEW");
+      setPermission(partnerInvite ? "COMMENT" : defaultPermission);
     }
     onOpenChange(next);
   }
+
+  const locale =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "he"
+      : "he";
+  const wa =
+    shareUrl && title
+      ? socialLinks(shareUrl, title, { locale }).whatsapp
+      : shareUrl
+        ? socialLinks(shareUrl, t("shareTitle"), { locale }).whatsapp
+        : null;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Link2 className="h-4 w-4 text-primary" />
-            {title ? t("shareNamed", { title }) : t("shareLink")}
+            {partnerInvite ? (
+              <Users className="h-4 w-4 text-primary" />
+            ) : (
+              <Link2 className="h-4 w-4 text-primary" />
+            )}
+            {partnerInvite
+              ? t("invitePartnerTitle")
+              : title
+                ? t("shareNamed", { title })
+                : t("shareLink")}
           </DialogTitle>
         </DialogHeader>
 
@@ -120,20 +155,30 @@ export function DbShareDialog({
                 <Check className="h-7 w-7 text-primary" strokeWidth={2.5} />
               </div>
             </div>
-            <p className="text-sm text-muted-foreground text-center">{t("anyoneWithLink")}</p>
+            <p className="text-sm text-muted-foreground text-center">
+              {partnerInvite ? t("invitePartnerReady") : t("anyoneWithLink")}
+            </p>
             <div className="flex gap-2">
               <Input value={shareUrl} readOnly className="font-mono text-xs h-10" />
               <Button size="icon" variant="outline" onClick={handleCopy} className="shrink-0 rounded-xl" aria-label={t("copyLink")}>
                 {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
+            {wa && (
+              <Button variant="secondary" className="w-full rounded-xl" asChild>
+                <a href={wa} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="h-4 w-4" />
+                  {partnerInvite ? t("invitePartnerWhatsApp") : t("shareWhatsApp")}
+                </a>
+              </Button>
+            )}
             {canNativeShare && (
               <Button variant="secondary" className="w-full rounded-xl" onClick={handleNativeShare}>
                 <ShareIcon className="h-4 w-4" /> {t("shareNative")}
               </Button>
             )}
             <Button variant="ghost" size="sm" className="w-full rounded-xl gap-1.5" onClick={() => setShowQr((v) => !v)}>
-              <QrCode className="h-3.5 w-3.5" /> {showQr ? "Hide QR" : "Show QR code"}
+              <QrCode className="h-3.5 w-3.5" /> {showQr ? t("hideQr") : t("showQr")}
             </Button>
             {showQr && (
               <div className="flex justify-center py-2">
@@ -146,6 +191,11 @@ export function DbShareDialog({
           </div>
         ) : (
           <div className="space-y-4">
+            {partnerInvite && (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {t("invitePartnerHint")}
+              </p>
+            )}
             <div className="space-y-2">
               <Label>{t("permission")}</Label>
               <Select value={permission} onValueChange={(v) => setPermission(v as typeof permission)}>
@@ -190,7 +240,7 @@ export function DbShareDialog({
           {!shareUrl && (
             <Button onClick={handleCreate} disabled={loading}>
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {t("createLink")}
+              {partnerInvite ? t("invitePartnerCreate") : t("createLink")}
             </Button>
           )}
         </DialogFooter>

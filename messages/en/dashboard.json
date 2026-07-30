@@ -17,5 +17,10 @@
   "smartViews": "Smart views",
   "addSmartView": "Add view",
   "noSmartViews": "No smart views yet",
-  "noSmartViewsHint": "Save common filters as a smart view"
+  "noSmartViewsHint": "Save common filters as a smart view",
+  "week": {
+    "title": "This week",
+    "spotsAdded": "Spots added",
+    "visits": "Visits"
+  }
 }

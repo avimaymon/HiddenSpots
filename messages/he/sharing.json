@@ -47,5 +47,13 @@
   "permComment": "תגובה",
   "permEdit": "עריכה",
   "activeShares": "שיתופים פעילים",
-  "noActiveShares": "אין שיתופים פעילים"
+  "noActiveShares": "אין שיתופים פעילים",
+  "showQr": "הצג קוד QR",
+  "hideQr": "הסתר QR",
+  "invitePartnerTitle": "הזמן שותף/ת לטיול",
+  "invitePartnerHint": "שלחו קישור עם הרשאת תגובה — אפשר להוסיף הערות בשטח בלי לערוך את האטלס שלכם.",
+  "invitePartnerCreate": "צור הזמנה",
+  "invitePartnerReady": "ההזמנה מוכנה — שלחו בוואטסאפ.",
+  "invitePartnerWhatsApp": "שלח בוואטסאפ",
+  "waShareBody": "מצאתי מקום מושלם ב-HiddenSpots: {title}\n\nלחצו לפתיחה:\n{url}"
 }

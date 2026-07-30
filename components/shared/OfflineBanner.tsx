@@ -2,20 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { WifiOff, RefreshCw } from "lucide-react";
-import { pendingSyncCount } from "@/lib/offline/db";
+import { WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useSyncQueue } from "@/hooks/use-sync-queue";
+import { toast } from "@/hooks/use-toast";
 
 export function OfflineBanner() {
   const t = useTranslations("pwa");
   const [offline, setOffline] = useState(false);
-  const [pending, setPending] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+  const { pending, failed, lastError, syncing, flush, dropStuck } = useSyncQueue();
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOffline(!navigator.onLine);
-    pendingSyncCount().then(setPending);
-
-    const on = () => { setOffline(false); pendingSyncCount().then(setPending); };
+    const on = () => setOffline(false);
     const off = () => setOffline(true);
     window.addEventListener("online", on);
     window.addEventListener("offline", off);
@@ -25,42 +26,101 @@ export function OfflineBanner() {
     };
   }, []);
 
-  const [expanded, setExpanded] = useState(false);
-  if (!offline && pending === 0) return null;
+  if (!offline && pending === 0 && failed === 0) return null;
 
-  const unavailable = [
-    "Solar/moon info", "Air quality", "Weather forecast", "Map tiles (new)", "Share/export", "AI features",
-  ];
+  const showFail = failed > 0 && !offline;
 
   return (
     <div className="fixed top-0 inset-x-0 z-50 safe-area-pt">
       <div
         className="flex items-center justify-center gap-2 text-white text-xs font-medium py-2 px-4 cursor-pointer select-none"
-        style={{ background: offline ? "#d97706" : "#16a34a" }}
+        style={{
+          background: offline ? "#d97706" : showFail ? "#dc2626" : "#16a34a",
+        }}
         onClick={() => setExpanded((v) => !v)}
+        role="status"
       >
         {offline ? (
           <>
             <WifiOff className="h-3.5 w-3.5 shrink-0" />
             {t("offlineBanner")}
             {pending > 0 && (
-              <span className="ms-1 opacity-80">· {pending} queued ⏳</span>
+              <span className="ms-1 opacity-80">· {t("syncPending", { count: pending })}</span>
             )}
+            <span className="ms-1 opacity-60">▾</span>
+          </>
+        ) : showFail ? (
+          <>
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            {t("syncFailed", { count: failed })}
             <span className="ms-1 opacity-60">▾</span>
           </>
         ) : (
           <>
-            <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
-            {t("syncing")}
+            <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? t("syncing") : t("syncPending", { count: pending })}
           </>
         )}
       </div>
-      {offline && expanded && (
-        <div className="bg-amber-700 text-white px-4 py-3 text-xs space-y-1">
-          <p className="font-semibold opacity-90">Unavailable offline:</p>
-          <ul className="list-disc list-inside opacity-75 space-y-0.5">
-            {unavailable.map((f) => <li key={f}>{f}</li>)}
-          </ul>
+
+      {expanded && (
+        <div
+          className="px-4 py-3 text-xs space-y-2 text-white"
+          style={{ background: offline ? "#b45309" : showFail ? "#b91c1c" : "#15803d" }}
+        >
+          {offline && (
+            <>
+              <p className="font-semibold opacity-90">{t("offlineUnavailableTitle")}</p>
+              <ul className="list-disc list-inside opacity-80 space-y-0.5">
+                <li>{t("offlineUnavailableMaps")}</li>
+                <li>{t("offlineUnavailableShare")}</li>
+                <li>{t("offlineUnavailableWeather")}</li>
+              </ul>
+            </>
+          )}
+          {(pending > 0 || failed > 0) && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 rounded-lg text-xs"
+                disabled={syncing || offline}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const r = await flush();
+                  toast({
+                    title: r.failed ? t("syncPartial") : t("synced"),
+                    description: r.failed
+                      ? t("syncFailed", { count: r.failed })
+                      : undefined,
+                    variant: r.failed ? "destructive" : "success",
+                  });
+                }}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                {t("retrySync")}
+              </Button>
+              {failed > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 rounded-lg text-xs text-white hover:bg-white/10"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const n = await dropStuck();
+                    toast({ title: t("droppedStuck", { count: n }) });
+                  }}
+                >
+                  {t("dropStuck")}
+                </Button>
+              )}
+            </div>
+          )}
+          {lastError && (
+            <p className="opacity-70 font-mono truncate" title={lastError}>
+              {lastError}
+            </p>
+          )}
         </div>
       )}
     </div>

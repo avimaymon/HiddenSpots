@@ -24,6 +24,10 @@
   "logFailed": "רישום הביקור נכשל",
   "saveVisit": "שמור ביקור",
   "imHere": "אני כאן",
+  "imHereWithPhoto": "אני כאן + תמונה",
   "imHereDone": "נרשם!",
-  "imHereFar": "נראה שאת/ה במרחק {distance} — עדיין לרשום?"
+  "imHereFar": "נראה שאת/ה במרחק {distance} — עדיין לרשום?",
+  "addPhotoOptional": "הוסף תמונה (אופציונלי)",
+  "removePhoto": "הסר תמונה",
+  "photoUploadFailed": "הביקור נרשם, אבל העלאת התמונה נכשלה"
 }

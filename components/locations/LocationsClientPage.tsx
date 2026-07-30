@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useTransition } from "react";
 import { Link } from "@/i18n/navigation";
-import { Search, Grid3x3, List, Plus, Heart, Bookmark, Eye, MapPin, X, CheckSquare, Trash2 } from "lucide-react";
+import { Search, Grid3x3, List, Plus, Heart, Bookmark, Eye, MapPin, X, CheckSquare, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -467,12 +467,26 @@ function EmptyState({
         </p>
       </div>
       {!search && filter === "all" && (
-        <Button asChild className="rounded-xl fab-nature border-0 text-primary-foreground">
-          <Link href="/app">
-            <MapPin className="h-4 w-4" />
-            {t("navigate")}
-          </Link>
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 items-center">
+          <Button asChild className="rounded-xl fab-nature border-0 text-primary-foreground">
+            <Link href="/app">
+              <Plus className="h-4 w-4" />
+              {t("emptyCtaAdd")}
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="rounded-xl">
+            <Link href="/import">
+              <Upload className="h-4 w-4" />
+              {t("emptyCtaImport")}
+            </Link>
+          </Button>
+          <Button asChild variant="ghost" className="rounded-xl">
+            <Link href="/app">
+              <MapPin className="h-4 w-4" />
+              {t("navigate")}
+            </Link>
+          </Button>
+        </div>
       )}
     </div>
   );

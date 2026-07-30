@@ -16,6 +16,7 @@ import { ActiveSharesSection } from "@/components/settings/ActiveSharesSection";
 import { DuplicatesSection } from "@/components/settings/DuplicatesSection";
 import { CategorySettingsSection } from "@/components/settings/CategorySettingsSection";
 import { PushNotificationsSection } from "@/components/settings/PushNotificationsSection";
+import { OpsHealthSection } from "@/components/settings/OpsHealthSection";
 import { LocaleSwitcher } from "@/components/shared/LocaleSwitcher";
 import { toast } from "@/hooks/use-toast";
 import { useState, useRef } from "react";
@@ -269,6 +270,8 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
         <section className="rounded-2xl border border-border/50 bg-card/50 p-5">
           <PushNotificationsSection />
         </section>
+
+        <OpsHealthSection />
 
         <section className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5 space-y-4">
           <div className="flex items-center gap-2 font-bold text-sm text-destructive">

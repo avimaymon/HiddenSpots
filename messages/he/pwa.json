@@ -12,5 +12,14 @@
   "synced": "כל השינויים סונכרנו",
   "offlineBanner": "אין חיבור",
   "installHint": "הוסף למסך הבית לגישה מהירה בשטח",
-  "dismiss": "סגור"
+  "dismiss": "סגור",
+  "syncFailed": "{count, plural, one {סנכרון אחד נכשל} other {# סנכרונים נכשלו}}",
+  "syncPartial": "חלק מהשינויים לא סונכרנו",
+  "retrySync": "נסה שוב",
+  "dropStuck": "הסר תקועים",
+  "droppedStuck": "הוסרו {count} פריטים תקועים",
+  "offlineUnavailableTitle": "לא זמין ללא רשת",
+  "offlineUnavailableMaps": "חיפוש כתובות / שכבות מקוונות",
+  "offlineUnavailableShare": "יצירת קישורי שיתוף חדשים",
+  "offlineUnavailableWeather": "מזג אוויר חי"
 }

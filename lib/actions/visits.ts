@@ -143,6 +143,9 @@ export async function getDashboardStats() {
   const userId = await requireAuth();
   const currentSeason = SEASON_MAP[new Date().getMonth()];
 
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
   const [
     totalLocations,
     totalVisits,
@@ -154,6 +157,8 @@ export async function getDashboardStats() {
     recentVisits,
     allVisits,
     seasonalSpots,
+    weekLocationsAdded,
+    weekVisits,
   ] = await Promise.all([
     prisma.location.count({ where: { userId, ...activeLocationWhere } }),
     prisma.visit.count({ where: { userId } }),
@@ -196,6 +201,12 @@ export async function getDashboardStats() {
       take: 4,
       include: { category: true, photos: { where: { isPrimary: true }, take: 1 } },
     }),
+    prisma.location.count({
+      where: { userId, ...activeLocationWhere, createdAt: { gte: weekAgo } },
+    }),
+    prisma.visit.count({
+      where: { userId, visitedAt: { gte: weekAgo } },
+    }),
   ]);
 
   const visitStreak = computeStreak(allVisits);
@@ -237,6 +248,8 @@ export async function getDashboardStats() {
     currentSeason,
     seasonalSpots,
     earnedBadges,
+    weekLocationsAdded,
+    weekVisits,
   };
 }
 

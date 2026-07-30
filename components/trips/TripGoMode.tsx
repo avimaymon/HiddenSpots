@@ -49,6 +49,16 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
     return stopWatch;
   }, [startWatch, stopWatch]);
 
+  // Pause GPS when tab/app is backgrounded — saves battery in the field
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "hidden") stopWatch();
+      else startWatch();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [startWatch, stopWatch]);
+
   useEffect(() => {
     const sync = () => setOnline(navigator.onLine);
     sync();

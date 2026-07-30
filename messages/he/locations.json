@@ -1,7 +1,9 @@
 {
   "title": "המיקומים שלי",
   "empty": "עוד אין מיקומים",
-  "emptyHint": "לחץ + כדי להוסיף את המיקום הראשון שלך",
+  "emptyHint": "הוסיפו נקודה מהמפה, או ייבאו שכבה מ-Google My Maps — תוך דקה יש אטלס.",
+  "emptyCtaAdd": "הוסף נקודה במפה",
+  "emptyCtaImport": "ייבוא מ-My Maps",
   "searchPlaceholder": "חפש מיקומים…",
   "addNew": "הוסף מיקום",
   "savedTitle": "מיקום נשמר!",
