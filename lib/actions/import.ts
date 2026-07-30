@@ -82,6 +82,48 @@ export async function importLocations(
   return { created, skipped, errors };
 }
 
+/** Fetch Google My Maps as KML and return import preview (no write). */
+export async function previewMyMapsUrl(urlOrMid: string): Promise<{
+  locations: Partial<LocationFormData>[];
+  source: string;
+  count: number;
+  errors: string[];
+  mid: string;
+}> {
+  await requireAuth();
+  const { extractMyMapsMid, myMapsKmlUrl } = await import("@/lib/geo/mymaps");
+  const { parseKmlText } = await import("@/lib/geo/import");
+  const mid = extractMyMapsMid(urlOrMid);
+  if (!mid) {
+    return { locations: [], source: "My Maps", count: 0, errors: ["INVALID_MYMAPS_URL"], mid: "" };
+  }
+
+  const res = await fetch(myMapsKmlUrl(mid), {
+    headers: { "User-Agent": "HiddenSpots/1.0" },
+    next: { revalidate: 0 },
+  });
+  if (!res.ok) {
+    return {
+      locations: [],
+      source: "My Maps",
+      count: 0,
+      errors: [`FETCH_FAILED:${res.status}`],
+      mid,
+    };
+  }
+  const text = await res.text();
+  const preview = parseKmlText(text);
+  return { ...preview, source: "Google My Maps", mid };
+}
+
+export async function importMyMapsUrl(urlOrMid: string) {
+  const preview = await previewMyMapsUrl(urlOrMid);
+  if (!preview.count) {
+    return { created: 0, skipped: 0, errors: preview.errors.length ? preview.errors : ["EMPTY"] };
+  }
+  return importLocations(preview.locations);
+}
+
 export async function exportLocationsAsGeoJson(userId: string) {
   const locations = await prisma.location.findMany({
     where: { userId, deletedAt: null },

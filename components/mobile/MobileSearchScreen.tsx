@@ -9,6 +9,8 @@ import {
   hasNlFilters,
   matchLocationAgainstNl,
 } from "@/lib/search/hebrew-nl";
+import { useGeolocation } from "@/hooks/use-geolocation";
+import { sortByDistance, filterWithinRadius, DEFAULT_NEARBY_RADIUS_M } from "@/lib/geo/nearby";
 
 type LocationRow = {
   id: string;
@@ -38,6 +40,7 @@ export function MobileSearchScreen({ open, onClose, locations, onSelect }: Props
   const tc = useTranslations("common");
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
+  const { latitude: gpsLat, longitude: gpsLng } = useGeolocation(true);
 
   useEffect(() => {
     if (open) {
@@ -61,8 +64,16 @@ export function MobileSearchScreen({ open, onClose, locations, onSelect }: Props
   const results = useMemo(() => {
     const q = query.trim();
     if (!q) return locations.slice(0, 40);
+    const origin =
+      gpsLat != null && gpsLng != null
+        ? { latitude: gpsLat, longitude: gpsLng }
+        : null;
     if (nl && hasNlFilters(nl)) {
-      return locations.filter((l) => matchLocationAgainstNl(l, nl)).slice(0, 40);
+      let hits = locations.filter((l) => matchLocationAgainstNl(l, nl));
+      if (nl.nearby && origin) {
+        hits = sortByDistance(filterWithinRadius(hits, origin, DEFAULT_NEARBY_RADIUS_M), origin);
+      }
+      return hits.slice(0, 40);
     }
     const lower = q.toLowerCase();
     return locations
@@ -72,7 +83,7 @@ export function MobileSearchScreen({ open, onClose, locations, onSelect }: Props
           (l.category?.name?.toLowerCase().includes(lower) ?? false)
       )
       .slice(0, 40);
-  }, [query, locations, nl]);
+  }, [query, locations, nl, gpsLat, gpsLng]);
 
   if (!open) return null;
 

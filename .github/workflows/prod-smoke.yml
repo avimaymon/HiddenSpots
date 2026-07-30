@@ -1,0 +1,35 @@
+name: Production smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily 04:00 UTC — after Drive cron at 03:00
+    - cron: "0 4 * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/prod-smoke.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health
+        run: |
+          set -euo pipefail
+          BASE="${{ vars.PRODUCTION_URL || 'https://hidden-spots-ruby.vercel.app' }}"
+          echo "Checking $BASE/api/health"
+          code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$BASE/api/health")
+          echo "status=$code"
+          cat /tmp/health.json
+          test "$code" = "200"
+          grep -q '"status":"ok"\|"status": "ok"' /tmp/health.json
+
+      - name: Hebrew landing
+        run: |
+          set -euo pipefail
+          BASE="${{ vars.PRODUCTION_URL || 'https://hidden-spots-ruby.vercel.app' }}"
+          echo "Checking $BASE/he"
+          code=$(curl -sS -o /dev/null -w "%{http_code}" "$BASE/he")
+          echo "status=$code"
+          test "$code" = "200"

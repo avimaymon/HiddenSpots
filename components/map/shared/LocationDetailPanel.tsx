@@ -9,6 +9,7 @@ import { AddToTripDialog } from "@/components/locations/AddToTripDialog";
 import { NavigateShareDialog } from "@/components/shared/NavigateShareDialog";
 import { DbShareDialog } from "@/components/shared/DbShareDialog";
 import { LogVisitDialog } from "@/components/visits/LogVisitDialog";
+import { ImHereButton } from "@/components/locations/ImHereButton";
 import { QuickNavButtons } from "@/components/shared/QuickNavButtons";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { copyToClipboard } from "@/lib/navigation/external-links";
@@ -185,6 +186,15 @@ export function LocationDetailPanel({ locationId, onClose, categories = [] }: Pr
           </Button>
         </div>
       )}
+
+      <div className="px-3 pt-3 shrink-0">
+        <ImHereButton
+          locationId={locationId}
+          latitude={location.latitude}
+          longitude={location.longitude}
+          onLogged={handleVisitLogged}
+        />
+      </div>
 
       <div className="flex items-center gap-1 px-3 py-2 border-b border-border/50 shrink-0 bg-background/50">
         <ActionBtn

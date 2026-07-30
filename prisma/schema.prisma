@@ -69,10 +69,11 @@ model User {
   onboarded      Boolean         @default(false)
 
   // Google Drive cloud backup
-  driveFileId        String?
-  driveLastBackupAt  DateTime?
-  driveAutoBackup    Boolean   @default(false)
-  driveNextBackupAt  DateTime?
+  driveFileId            String?
+  driveLastBackupAt      DateTime?
+  driveAutoBackup        Boolean   @default(false)
+  driveNextBackupAt      DateTime?
+  driveLastRestoreTestAt DateTime?
 
   // Personalization
   fontSize         String  @default("default")

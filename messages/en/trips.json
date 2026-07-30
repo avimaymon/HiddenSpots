@@ -38,7 +38,13 @@
     "navigate": "Navigate",
     "markVisited": "Mark arrived",
     "completed": "Trip completed!",
-    "stopVisited": "Arrived at stop!"
+    "stopVisited": "Arrived at stop!",
+    "autoArrived": "Auto-arrived — moving on",
+    "etaDrive": "Drive ~{time}",
+    "etaWalk": "Walk ~{time}",
+    "offline": "Offline",
+    "gpsDenied": "GPS permission denied",
+    "nearAuto": "Near stop — auto-marking"
   },
   "shareTrip": "Share trip",
   "tripRoute": "Route",

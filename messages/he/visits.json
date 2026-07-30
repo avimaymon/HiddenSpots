@@ -21,5 +21,9 @@
   "addPhoto": "הוסף תמונה",
   "deleted": "ביקור נמחק",
   "logged": "ביקור נרשם",
-  "saveVisit": "שמור ביקור"
+  "logFailed": "רישום הביקור נכשל",
+  "saveVisit": "שמור ביקור",
+  "imHere": "אני כאן",
+  "imHereDone": "נרשם!",
+  "imHereFar": "נראה שאת/ה במרחק {distance} — עדיין לרשום?"
 }

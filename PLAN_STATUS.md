@@ -1,26 +1,17 @@
-# PLAN.md — Implementation status (Now / Next / Later)
+# PLAN.md — Implementation status
 
-Updated after high-ROI roadmap ship (Phases 0–3).
+Updated after habit / growth / ops roadmap (A–C).
 
-## Now — Harden v1 — Done
+## Shipped
 
-Credentials category seed · Leaflet default without paid keys · Offline sync `update` + LWW · SW `/api` + OSM · Trip remove stop · Trash/restore · Rich visits · Share expiry/revoke/native · Rate limit · Password reset · Privacy/Terms · Tags filter · CI lint+test · EXIF strip SECRET · migrate deploy · Client error boundary + `/api/client-error` · Account linking (`allowDangerousEmailAccountLinking`)
+- Harden v1 · Field-ready · Later polish (sun, feedback, Drive cron, Hebrew NL, share perms)
+- **A** One-tap I'm here · Nearby GPS sort · Go mode ETA/auto-arrive/offline · PWA after first spot
+- **B** Share mini-landing + OG · My Maps URL import + KMZ · Collection share map/clone/WhatsApp CTA
+- **C** Drive restore dry-run · ERROR_WEBHOOK_URL triage · Production smoke workflow
 
-## Next — Field-ready — Done
+## Deferred
 
-GPS FAB long-press · MobileSearch · PWA install · VisitPhoto+camera in LogVisitDialog · Landing · Print trip + print CSS · Leaflet offline tiles · Landscape-narrow CSS · Stronger reduced-motion · KML/CSV · Import dupes · Create-time dup warn · Playwright 320px config
-
-## Later — Done
-
-Measure + radius · Collection folders (UI) · Trip polyline (Mapbox + Leaflet) · Print · Landing · Weather autofill · Create from photo EXIF · Account linking · Sun / high-contrast mode · In-app feedback · Scheduled Drive backup (cron) · Hebrew NL search (keyword dictionary) · Collaborative COMMENT/EDIT enforcement
-
-## Explicitly deferred (still out of scope)
-
-- Magic-link-only auth (Resend magic)
-- Neon preview DB branches
-- Full Cmd-K shortcut surface
-- Google Maps trip polyline parity (Leaflet+Mapbox covered)
-- AI-backed NL search (dictionary covers v1)
+- Magic-link-only auth · Neon preview branches · Full Cmd-K · Google Maps polyline parity · AI NL
 
 ## Verify
 

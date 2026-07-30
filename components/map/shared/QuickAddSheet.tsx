@@ -94,6 +94,8 @@ export function QuickAddSheet({ open, onOpenChange, coords, categories, onCreate
         categoryId: categoryId || undefined,
       });
       if (photoUrl) await addLocationPhoto(loc.id, photoUrl, true);
+      const { markHasSavedSpot } = await import("@/lib/pwa/first-spot");
+      markHasSavedSpot();
       setSpark(true);
       toast({ title: t("savedTitle"), variant: "success" });
       onCreated({

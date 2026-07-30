@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
-import { Navigation, Check, ChevronRight, X, Loader2, MapPin, Phone, Compass } from "lucide-react";
+import { Navigation, Check, ChevronRight, X, Loader2, MapPin, Phone, Compass, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn, getDistanceBetween, formatDistance } from "@/lib/utils";
+import { cn, getDistanceBetween, formatDistance, formatDuration } from "@/lib/utils";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { useCompass } from "@/hooks/use-compass";
 import { createVisit } from "@/lib/actions/visits";
 import { toast } from "@/hooks/use-toast";
 import { buildWazeNavigate } from "@/lib/navigation/external-links";
 import { bearing as turfBearing } from "@turf/turf";
+import { estimateEtaMinutes } from "@/lib/geo/nearby";
+
+const AUTO_ARRIVE_M = 80;
 
 interface Stop {
   id: string;
@@ -36,6 +39,8 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [logging, setLogging] = useState(false);
+  const [online, setOnline] = useState(true);
+  const autoArrivedRef = useRef<Set<string>>(new Set());
   const { latitude, longitude, startWatch, stopWatch, denied, loading } = useGeolocation(true);
   const compassHeading = useCompass();
 
@@ -44,6 +49,17 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
     return stopWatch;
   }, [startWatch, stopWatch]);
 
+  useEffect(() => {
+    const sync = () => setOnline(navigator.onLine);
+    sync();
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
+
   const ordered = [...stops]
     .filter((s) => s.location)
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -51,11 +67,15 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
   const current = ordered[currentIdx];
   const completed = currentIdx >= ordered.length;
 
-  const distanceToNext = current?.location && latitude != null && longitude != null
-    ? formatDistance(getDistanceBetween(latitude, longitude, current.location.latitude, current.location.longitude))
-    : null;
+  const metersToNext =
+    current?.location && latitude != null && longitude != null
+      ? getDistanceBetween(latitude, longitude, current.location.latitude, current.location.longitude)
+      : null;
 
-  // Bearing from current position to next stop, corrected by device compass heading
+  const distanceToNext = metersToNext != null ? formatDistance(metersToNext) : null;
+  const etaDrive = metersToNext != null ? estimateEtaMinutes(metersToNext, "drive") : null;
+  const etaWalk = metersToNext != null ? estimateEtaMinutes(metersToNext, "walk") : null;
+
   const bearingToNext =
     current?.location && latitude != null && longitude != null
       ? turfBearing([longitude, latitude], [current.location.longitude, current.location.latitude])
@@ -65,13 +85,19 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
       ? ((bearingToNext - compassHeading + 360) % 360)
       : bearingToNext;
 
-  async function markArrived() {
-    if (!current) return;
+  async function markArrived(auto = false) {
+    if (!current || logging) return;
+    const locId = current.location!.id;
+    if (auto && autoArrivedRef.current.has(locId)) return;
     setLogging(true);
     try {
-      await createVisit({ locationId: current.location!.id, visitedAt: new Date().toISOString() });
-      setVisited((v) => new Set([...v, current.location!.id]));
-      toast({ title: t("goMode.stopVisited"), variant: "success" });
+      await createVisit({ locationId: locId, visitedAt: new Date().toISOString() });
+      if (auto) autoArrivedRef.current.add(locId);
+      setVisited((v) => new Set([...v, locId]));
+      toast({
+        title: auto ? t("goMode.autoArrived") : t("goMode.stopVisited"),
+        variant: "success",
+      });
       if (currentIdx + 1 < ordered.length) {
         setCurrentIdx((i) => i + 1);
       } else {
@@ -82,6 +108,14 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
       setLogging(false);
     }
   }
+
+  // Auto-advance when within AUTO_ARRIVE_M
+  useEffect(() => {
+    if (metersToNext == null || metersToNext > AUTO_ARRIVE_M || !current?.location) return;
+    if (visited.has(current.location.id) || logging) return;
+    void markArrived(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metersToNext, current?.location?.id]);
 
   function navigateTo() {
     if (!current?.location) return;
@@ -95,7 +129,6 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 bg-background/98 backdrop-blur-sm flex flex-col">
-      {/* Header */}
       <div
         className="flex items-center gap-2 px-4 py-4 border-b border-border/50"
         style={{ borderBottomColor: `${trip.color}40` }}
@@ -112,6 +145,11 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
             {t("goMode.title")} · {currentIdx}/{ordered.length}
           </p>
         </div>
+        {!online && (
+          <span className="flex items-center gap-1 text-[11px] text-amber-600 shrink-0">
+            <WifiOff className="h-3.5 w-3.5" /> {t("goMode.offline")}
+          </span>
+        )}
         {trip.emergencyPhone && latitude != null && (
           <a
             href={`sms:${trip.emergencyPhone}?body=${encodeURIComponent(`I'm on trip "${trip.name}" at ${latitude?.toFixed(5)},${longitude?.toFixed(5)} — checking in.`)}`}
@@ -126,7 +164,6 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
         </Button>
       </div>
 
-      {/* Progress dots */}
       <div className="flex gap-1.5 px-4 py-3 overflow-x-auto scrollbar-hide">
         {ordered.map((stop, i) => (
           <div
@@ -147,11 +184,11 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
         {completed ? (
           <div className="text-center space-y-4">
             <div className="h-20 w-20 rounded-3xl bg-primary/10 flex items-center justify-center text-5xl mx-auto">
-              🎉
+              ✓
             </div>
             <p className="font-bold text-xl">{t("goMode.completed")}</p>
             <p className="text-sm text-muted-foreground">
-              {ordered.length} stops visited
+              {ordered.length} {t("stops")}
             </p>
             <Button className="rounded-xl" onClick={onClose}>
               {t("goMode.title")}
@@ -159,7 +196,6 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
           </div>
         ) : current ? (
           <div className="w-full max-w-sm space-y-4">
-            {/* Current stop card */}
             <div
               className="rounded-3xl border-2 p-5 space-y-3"
               style={{ borderColor: `${trip.color}50` }}
@@ -181,11 +217,23 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
               </div>
               {distanceToNext && (
                 <div
-                  className="flex items-center gap-1.5 font-bold text-sm"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 font-bold text-sm"
                   style={{ color: trip.color }}
                 >
-                  <Navigation className="h-4 w-4" />
-                  {distanceToNext} {t("goMode.distance")}
+                  <span className="flex items-center gap-1.5">
+                    <Navigation className="h-4 w-4" />
+                    {distanceToNext}
+                  </span>
+                  {etaDrive != null && (
+                    <span className="font-medium text-muted-foreground">
+                      {t("goMode.etaDrive", { time: formatDuration(etaDrive) })}
+                    </span>
+                  )}
+                  {etaWalk != null && metersToNext != null && metersToNext < 5000 && (
+                    <span className="font-medium text-muted-foreground">
+                      {t("goMode.etaWalk", { time: formatDuration(etaWalk) })}
+                    </span>
+                  )}
                 </div>
               )}
               {relBearing != null && (
@@ -194,17 +242,20 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
                     className="h-5 w-5 text-primary transition-transform"
                     style={{ transform: `rotate(${relBearing}deg)` }}
                   />
-                  <span>{Math.round(relBearing)}° toward spot</span>
+                  <span>{Math.round(relBearing)}°</span>
                 </div>
               )}
               {loading && (
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Getting location…
+                  …
                 </div>
               )}
               {denied && (
-                <p className="text-xs text-amber-600">GPS permission denied</p>
+                <p className="text-xs text-amber-600">{t("goMode.gpsDenied")}</p>
+              )}
+              {metersToNext != null && metersToNext <= AUTO_ARRIVE_M && (
+                <p className="text-xs text-emerald-600 font-medium">{t("goMode.nearAuto")}</p>
               )}
             </div>
 
@@ -213,6 +264,7 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
                 variant="outline"
                 className="flex-1 h-12 rounded-xl"
                 onClick={navigateTo}
+                disabled={!online}
               >
                 <Navigation className="h-4 w-4" />
                 {t("goMode.navigate")}
@@ -220,7 +272,7 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
               <Button
                 className="flex-1 h-12 rounded-xl"
                 style={{ background: trip.color }}
-                onClick={markArrived}
+                onClick={() => markArrived(false)}
                 disabled={logging}
               >
                 {logging ? (
@@ -243,7 +295,6 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
         ) : null}
       </div>
 
-      {/* All stops list */}
       <div className="border-t border-border/40 p-4 space-y-1 max-h-40 overflow-auto">
         {ordered.map((stop, i) => (
           <div

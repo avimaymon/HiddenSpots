@@ -117,6 +117,8 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
         await addTagToLocation(loc.id, tag);
       }
       localStorage.removeItem("hiddenspots_add_location_draft");
+      const { markHasSavedSpot } = await import("@/lib/pwa/first-spot");
+      markHasSavedSpot();
       toast({ title: t("savedToast"), variant: "success" });
       onCreated?.(loc);
       setPendingPhotos([]);

@@ -32,6 +32,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const path = `/share/${token}`;
   const alternates = buildPageAlternates(locale, path);
 
+  const site = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
+  const ogImage = site
+    ? `${site}/${locale}/share/${token}/opengraph-image`
+    : undefined;
+
   return {
     title,
     description,
@@ -42,13 +47,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       siteName: SITE_NAME,
       locale: OG_LOCALE[locale],
       title: t("shareTitleNamed", { title }),
-      description,
+      description: t("shareOgDescription", { title }),
       url: alternates.canonical,
+      ...(ogImage ? { images: [{ url: ogImage, width: 1200, height: 630 }] } : {}),
     },
     twitter: {
       card: "summary_large_image",
       title: t("shareTitleNamed", { title }),
-      description,
+      description: t("shareOgDescription", { title }),
+      ...(ogImage ? { images: [ogImage] } : {}),
     },
   };
 }

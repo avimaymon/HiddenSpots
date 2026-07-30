@@ -21,5 +21,9 @@
   "addPhoto": "Add photo",
   "deleted": "Visit deleted",
   "logged": "Visit logged",
-  "saveVisit": "Save visit"
+  "logFailed": "Could not log visit",
+  "saveVisit": "Save visit",
+  "imHere": "I'm here",
+  "imHereDone": "Logged!",
+  "imHereFar": "You seem {distance} away — log anyway?"
 }

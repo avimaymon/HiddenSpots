@@ -29,6 +29,7 @@ export interface DriveStatus {
   driveFileId: string | null;
   driveModifiedAt: string | null;
   autoBackup: boolean;
+  lastRestoreTestAt: Date | null;
 }
 
 export async function getDriveStatus(): Promise<DriveStatus> {
@@ -43,6 +44,7 @@ export async function getDriveStatus(): Promise<DriveStatus> {
         driveFileId: true,
         driveLastBackupAt: true,
         driveAutoBackup: true,
+        driveLastRestoreTestAt: true,
       },
     }),
     getGoogleAccount(userId),
@@ -67,6 +69,7 @@ export async function getDriveStatus(): Promise<DriveStatus> {
     driveFileId: user?.driveFileId ?? null,
     driveModifiedAt,
     autoBackup: user?.driveAutoBackup ?? false,
+    lastRestoreTestAt: user?.driveLastRestoreTestAt ?? null,
   };
 }
 
@@ -106,13 +109,30 @@ export interface RestoreResult {
   skipped: number;
 }
 
-export async function restoreFromDrive(): Promise<RestoreResult> {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Unauthorized");
-  const userId = session.user.id;
+export interface RestoreDryRunResult {
+  wouldImport: number;
+  wouldSkip: number;
+  totalInBackup: number;
+  sampleTitles: string[];
+  testedAt: Date;
+}
 
+type BackupFeature = {
+  geometry: { coordinates: [number, number, number?] };
+  properties: {
+    name?: string;
+    description?: string | null;
+    address?: string | null;
+    "hs:isFavorite"?: boolean;
+    "hs:isBucketList"?: boolean;
+    "hs:isVisited"?: boolean;
+    "hs:privacy"?: string;
+    "hs:tags"?: string[];
+  };
+};
+
+async function loadBackupFeatures(userId: string): Promise<BackupFeature[]> {
   const accessToken = await resolveDriveAccessToken(userId);
-
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { driveFileId: true },
@@ -127,27 +147,74 @@ export async function restoreFromDrive(): Promise<RestoreResult> {
   }
 
   const raw = await downloadBackupFile(accessToken, fileId);
-  type BackupFeature = {
-    geometry: { coordinates: [number, number, number?] };
-    properties: {
-      name?: string;
-      description?: string | null;
-      address?: string | null;
-      "hs:isFavorite"?: boolean;
-      "hs:isBucketList"?: boolean;
-      "hs:isVisited"?: boolean;
-      "hs:privacy"?: string;
-      "hs:tags"?: string[];
-    };
-  };
-
   const payload = JSON.parse(raw) as {
     version: number;
     locations: { features: BackupFeature[] };
   };
+  return payload.locations?.features ?? [];
+}
 
-  const features = payload.locations?.features ?? [];
+function isDupeOf(
+  lat: number,
+  lng: number,
+  existing: { latitude: number; longitude: number }[]
+): boolean {
+  return existing.some((e) => {
+    const dlat = (e.latitude - lat) * 111320;
+    const dlng = (e.longitude - lng) * 111320 * Math.cos(lat * (Math.PI / 180));
+    return Math.sqrt(dlat * dlat + dlng * dlng) < 50;
+  });
+}
 
+/** Preview restore without writing — also records drill timestamp. */
+export async function dryRunRestoreFromDrive(): Promise<RestoreDryRunResult> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+  const userId = session.user.id;
+
+  const features = await loadBackupFeatures(userId);
+  const existing = await prisma.location.findMany({
+    where: { userId, deletedAt: null },
+    select: { latitude: true, longitude: true },
+  });
+
+  let wouldImport = 0;
+  let wouldSkip = 0;
+  const sampleTitles: string[] = [];
+
+  for (const f of features) {
+    const [lng, lat] = f.geometry.coordinates;
+    const title = f.properties?.name ?? "Restored Location";
+    if (isDupeOf(lat, lng, existing)) {
+      wouldSkip++;
+    } else {
+      wouldImport++;
+      if (sampleTitles.length < 5) sampleTitles.push(title);
+    }
+  }
+
+  const testedAt = new Date();
+  await prisma.user.update({
+    where: { id: userId },
+    data: { driveLastRestoreTestAt: testedAt },
+  });
+  revalidateAppPaths("/settings");
+
+  return {
+    wouldImport,
+    wouldSkip,
+    totalInBackup: features.length,
+    sampleTitles,
+    testedAt,
+  };
+}
+
+export async function restoreFromDrive(): Promise<RestoreResult> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+  const userId = session.user.id;
+
+  const features = await loadBackupFeatures(userId);
   const existing = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     select: { latitude: true, longitude: true },
@@ -161,13 +228,7 @@ export async function restoreFromDrive(): Promise<RestoreResult> {
     const p = f.properties ?? {};
     const title = p.name ?? "Restored Location";
 
-    const isDupe = existing.some((e) => {
-      const dlat = (e.latitude - lat) * 111320;
-      const dlng = (e.longitude - lng) * 111320 * Math.cos(lat * (Math.PI / 180));
-      return Math.sqrt(dlat * dlat + dlng * dlng) < 50;
-    });
-
-    if (isDupe) {
+    if (isDupeOf(lat, lng, existing)) {
       skipped++;
       continue;
     }
@@ -207,6 +268,7 @@ export async function restoreFromDrive(): Promise<RestoreResult> {
       });
     }
 
+    existing.push({ latitude: lat, longitude: lng });
     imported++;
   }
 

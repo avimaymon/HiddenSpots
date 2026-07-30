@@ -38,7 +38,13 @@
     "navigate": "נווט",
     "markVisited": "סמן כהגעתי",
     "completed": "הטיול הושלם!",
-    "stopVisited": "הגעת לתחנה!"
+    "stopVisited": "הגעת לתחנה!",
+    "autoArrived": "הגעת אוטומטית — עוברים הלאה",
+    "etaDrive": "נסיעה ~{time}",
+    "etaWalk": "הליכה ~{time}",
+    "offline": "אופליין",
+    "gpsDenied": "אין הרשאת GPS",
+    "nearAuto": "בקרבת התחנה — מסמנים אוטומטית"
   },
   "shareTrip": "שתף טיול",
   "tripRoute": "מסלול",

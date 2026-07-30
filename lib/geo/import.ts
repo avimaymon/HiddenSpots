@@ -11,17 +11,27 @@ export async function parseImportFile(
   file: File
 ): Promise<ImportPreview> {
   const ext = file.name.split(".").pop()?.toLowerCase();
-  const text = await file.text();
 
   try {
+    if (ext === "kmz") {
+      const { kmlFromKmz } = await import("@/lib/geo/kmz");
+      const kml = await kmlFromKmz(await file.arrayBuffer());
+      return { ...parseKML(kml), source: "KMZ" };
+    }
+    const text = await file.text();
     if (ext === "geojson" || ext === "json") return parseGeoJSON(text);
-    if (ext === "kml" || ext === "kmz") return parseKML(text);
+    if (ext === "kml") return parseKML(text);
     if (ext === "gpx") return parseGPX(text);
     if (ext === "csv") return parseCSV(text);
     throw new Error(`Unsupported format: .${ext}`);
   } catch (e) {
     return { locations: [], source: ext ?? "unknown", count: 0, errors: [String(e)] };
   }
+}
+
+/** Parse KML text (also used by My Maps URL import). */
+export function parseKmlText(text: string): ImportPreview {
+  return parseKML(text);
 }
 
 function parseGeoJSON(text: string): ImportPreview {

@@ -10,6 +10,7 @@ import {
   getDriveStatus,
   backupToDrive,
   restoreFromDrive,
+  dryRunRestoreFromDrive,
   disconnectDrive,
   setDriveAutoBackup,
   type DriveStatus,
@@ -45,6 +46,7 @@ function DriveBackupInner() {
   // Inline confirm state instead of window.confirm()
   const [confirmRestore, setConfirmRestore] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -57,6 +59,7 @@ function DriveBackupInner() {
         driveFileId: null,
         driveModifiedAt: null,
         autoBackup: false,
+        lastRestoreTestAt: null,
       });
     } finally {
       setLoading(false);
@@ -254,7 +257,46 @@ function DriveBackupInner() {
                 <Download className="h-4 w-4" />{t("driveRestore")}
               </Button>
             )}
+            {status.driveFileId && (
+              <Button
+                variant="ghost"
+                className="rounded-xl"
+                disabled={testing}
+                onClick={async () => {
+                  setTesting(true);
+                  try {
+                    const r = await dryRunRestoreFromDrive();
+                    toast({
+                      title: t("driveDryRunOk"),
+                      description: t("driveDryRunDetail", {
+                        import: r.wouldImport,
+                        skip: r.wouldSkip,
+                        total: r.totalInBackup,
+                      }),
+                      variant: "success",
+                    });
+                    await refresh();
+                  } catch (e) {
+                    toast({ title: t("driveDryRunFailed"), description: String(e), variant: "destructive" });
+                  } finally {
+                    setTesting(false);
+                  }
+                }}
+              >
+                {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {t("driveDryRun")}
+              </Button>
+            )}
           </div>
+
+          {status.lastRestoreTestAt && (
+            <p className="text-xs text-muted-foreground">
+              {t("driveLastRestoreTest")}:{" "}
+              <span className="font-medium text-foreground">
+                {formatDistanceToNow(status.lastRestoreTestAt, { addSuffix: true })}
+              </span>
+            </p>
+          )}
 
           {/* Restore confirm inline */}
           {confirmRestore && (

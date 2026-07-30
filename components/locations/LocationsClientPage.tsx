@@ -21,6 +21,8 @@ import {
   hasNlFilters,
   matchLocationAgainstNl,
 } from "@/lib/search/hebrew-nl";
+import { useGeolocation } from "@/hooks/use-geolocation";
+import { sortByDistance, filterWithinRadius, DEFAULT_NEARBY_RADIUS_M } from "@/lib/geo/nearby";
 
 type LocationRow = {
   id: string;
@@ -67,6 +69,11 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchMode, setBatchMode] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const { latitude: gpsLat, longitude: gpsLng } = useGeolocation(true);
+  const gps =
+    gpsLat != null && gpsLng != null
+      ? { latitude: gpsLat, longitude: gpsLng }
+      : null;
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -135,10 +142,18 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
     if (categoryFilter !== "all") locs = locs.filter((l) => l.category?.id === categoryFilter);
     if (tagFilter !== "all") locs = locs.filter((l) => l.tags.some((tg) => tg.tag.id === tagFilter));
 
-    if (sort === "updated")
+    // NL "לידי" / nearby → radius filter + distance sort
+    if (nl?.nearby && gps) {
+      locs = sortByDistance(filterWithinRadius(locs, gps, DEFAULT_NEARBY_RADIUS_M), gps);
+    } else if ((sort === "distance" || sort === "nearest") && gps) {
+      locs = sortByDistance(locs, gps);
+    } else if (sort === "updated") {
       locs = [...locs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    if (sort === "name") locs = [...locs].sort((a, b) => a.title.localeCompare(b.title));
-    if (sort === "visits") locs = [...locs].sort((a, b) => b.visitCount - a.visitCount);
+    } else if (sort === "name") {
+      locs = [...locs].sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sort === "visits") {
+      locs = [...locs].sort((a, b) => b.visitCount - a.visitCount);
+    }
 
     return locs;
   }
@@ -322,6 +337,7 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="updated">{t("sort.newest")}</SelectItem>
+                <SelectItem value="nearest">{t("sort.nearest")}</SelectItem>
                 <SelectItem value="name">{t("sort.name")}</SelectItem>
                 <SelectItem value="visits">{t("sort.lastVisited")}</SelectItem>
               </SelectContent>
