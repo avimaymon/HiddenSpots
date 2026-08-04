@@ -106,10 +106,21 @@ function DriveBackupInner() {
     setRestoring(true);
     try {
       const result = await restoreFromDrive();
+      // Truncated and rejected counts are surfaced, not swallowed: a restore
+      // that quietly dropped rows would leave the user believing their atlas
+      // came back whole.
+      const description = [
+        `${result.imported} ${t("driveRestoreImported")}, ${result.skipped} ${t("driveRestoreSkipped")}`,
+        result.rejected > 0 ? t("driveRestoreRejected", { count: result.rejected }) : null,
+        result.truncated ? t("driveRestoreTruncated", { total: result.total }) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
       toast({
         title: t("driveRestoreSuccess"),
-        description: `${result.imported} ${t("driveRestoreImported")}, ${result.skipped} ${t("driveRestoreSkipped")}`,
-        variant: "success",
+        description,
+        variant: result.truncated || result.rejected > 0 ? "default" : "success",
       });
     } catch (e) {
       toast({ title: t("driveRestoreFailed"), description: String(e), variant: "destructive" });

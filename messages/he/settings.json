@@ -69,6 +69,8 @@
   "driveBackupScopeShort": "נקודות",
   "driveRestoreImported": "יובאו",
   "driveRestoreSkipped": "דולגו (כבר קיימות)",
+  "driveRestoreRejected": "{count} רשומות דולגו בגלל נתונים שגויים",
+  "driveRestoreTruncated": "הגיבוי מכיל {total} רשומות — שוחזר החלק הראשון בלבד",
   "driveRestoreConfirm": "הנקודות מהגיבוי יתמזגו לחשבון שלך. נקודות קיימות לא יידרסו.",
   "driveConflictTitle": "תצוגה מקדימה לשחזור",
   "driveConflictSkipHint": "{count} נקודות כבר קיימות בקרבת מקום וידולגו (ללא דריסה).",

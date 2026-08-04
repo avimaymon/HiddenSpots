@@ -69,6 +69,8 @@
   "driveBackupScopeShort": "spots",
   "driveRestoreImported": "imported",
   "driveRestoreSkipped": "skipped (already exist)",
+  "driveRestoreRejected": "{count} entries skipped — invalid data",
+  "driveRestoreTruncated": "Backup holds {total} entries — only the first batch was restored",
   "driveRestoreConfirm": "Spots from your backup will be merged into your account. Existing spots will not be overwritten.",
   "driveConflictTitle": "Restore preview",
   "driveConflictSkipHint": "{count} nearby spots already exist and will be skipped (no overwrite).",

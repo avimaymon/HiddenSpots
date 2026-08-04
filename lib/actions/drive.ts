@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
 import { revalidateAppPaths } from "@/lib/revalidate";
@@ -14,6 +15,12 @@ import {
   type BackupCoreResult,
 } from "@/lib/drive/backup-core";
 import { DUPE_SCAN_MAX } from "@/lib/export/limits";
+import { rateLimit } from "@/lib/rate-limit";
+import {
+  parseBackup,
+  type NormalizedFeature,
+  type ParsedBackup,
+} from "@/lib/drive/backup-schema";
 
 async function getGoogleAccount(userId: string) {
   return prisma.account.findFirst({
@@ -108,6 +115,12 @@ export async function backupToDrive(): Promise<BackupResult> {
 export interface RestoreResult {
   imported: number;
   skipped: number;
+  /** Features in the file, before the per-restore cap. */
+  total: number;
+  /** The file held more than RESTORE_FEATURES_MAX; the rest was not restored. */
+  truncated: boolean;
+  /** Features skipped because they failed validation (e.g. bad coordinates). */
+  rejected: number;
 }
 
 export interface RestoreDryRunResult {
@@ -118,21 +131,14 @@ export interface RestoreDryRunResult {
   testedAt: Date;
 }
 
-type BackupFeature = {
-  geometry: { coordinates: [number, number, number?] };
-  properties: {
-    name?: string;
-    description?: string | null;
-    address?: string | null;
-    "hs:isFavorite"?: boolean;
-    "hs:isBucketList"?: boolean;
-    "hs:isVisited"?: boolean;
-    "hs:privacy"?: string;
-    "hs:tags"?: string[];
-  };
-};
-
-async function loadBackupFeatures(userId: string): Promise<BackupFeature[]> {
+/**
+ * Fetch and validate the backup.
+ *
+ * The file sits in the user's own Drive and is fully editable there, so it is
+ * untrusted input that merely arrives over an authenticated channel — see
+ * lib/drive/backup-schema.ts for the rules.
+ */
+async function loadBackup(userId: string): Promise<ParsedBackup> {
   const accessToken = await resolveDriveAccessToken(userId);
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -147,12 +153,7 @@ async function loadBackupFeatures(userId: string): Promise<BackupFeature[]> {
     await prisma.user.update({ where: { id: userId }, data: { driveFileId: fileId } });
   }
 
-  const raw = await downloadBackupFile(accessToken, fileId);
-  const payload = JSON.parse(raw) as {
-    version: number;
-    locations: { features: BackupFeature[] };
-  };
-  return payload.locations?.features ?? [];
+  return parseBackup(await downloadBackupFile(accessToken, fileId));
 }
 
 function isDupeOf(
@@ -173,7 +174,7 @@ export async function dryRunRestoreFromDrive(): Promise<RestoreDryRunResult> {
   if (!session?.user?.id) throw new Error("Unauthorized");
   const userId = session.user.id;
 
-  const features = await loadBackupFeatures(userId);
+  const { features, total } = await loadBackup(userId);
   const existing = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     select: { latitude: true, longitude: true },
@@ -186,13 +187,11 @@ export async function dryRunRestoreFromDrive(): Promise<RestoreDryRunResult> {
   const sampleTitles: string[] = [];
 
   for (const f of features) {
-    const [lng, lat] = f.geometry.coordinates;
-    const title = f.properties?.name ?? "Restored Location";
-    if (isDupeOf(lat, lng, existing)) {
+    if (isDupeOf(f.latitude, f.longitude, existing)) {
       wouldSkip++;
     } else {
       wouldImport++;
-      if (sampleTitles.length < 5) sampleTitles.push(title);
+      if (sampleTitles.length < 5) sampleTitles.push(f.title);
     }
   }
 
@@ -206,7 +205,9 @@ export async function dryRunRestoreFromDrive(): Promise<RestoreDryRunResult> {
   return {
     wouldImport,
     wouldSkip,
-    totalInBackup: features.length,
+    // The true count in the file, not the post-cap page — a dry run that
+    // under-reported would defeat its own purpose.
+    totalInBackup: total,
     sampleTitles,
     testedAt,
   };
@@ -217,7 +218,12 @@ export async function restoreFromDrive(): Promise<RestoreResult> {
   if (!session?.user?.id) throw new Error("Unauthorized");
   const userId = session.user.id;
 
-  const features = await loadBackupFeatures(userId);
+  // A restore writes the whole atlas back; rate limited so a stuck client
+  // cannot replay it in a loop.
+  const { ok } = await rateLimit(`drive-restore:${userId}`, 5, 60 * 60 * 1000);
+  if (!ok) throw new Error("RATE_LIMITED");
+
+  const { features, total, truncated, rejected } = await loadBackup(userId);
   const existing = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     select: { latitude: true, longitude: true },
@@ -225,60 +231,71 @@ export async function restoreFromDrive(): Promise<RestoreResult> {
     orderBy: { updatedAt: "desc" },
   });
 
-  let imported = 0;
+  // Decide everything up front, so the writes below are set-based. Within-file
+  // duplicates are caught too, by growing `existing` as we go.
+  const toCreate: (NormalizedFeature & { id: string })[] = [];
   let skipped = 0;
-
   for (const f of features) {
-    const [lng, lat] = f.geometry.coordinates;
-    const p = f.properties ?? {};
-    const title = p.name ?? "Restored Location";
-
-    if (isDupeOf(lat, lng, existing)) {
+    if (isDupeOf(f.latitude, f.longitude, existing)) {
       skipped++;
       continue;
     }
+    toCreate.push({ ...f, id: randomUUID() });
+    existing.push({ latitude: f.latitude, longitude: f.longitude });
+  }
 
-    const VALID_PRIVACY = ["PRIVATE", "SHARED", "PUBLIC", "SECRET"] as const;
-    type Privacy = (typeof VALID_PRIVACY)[number];
-    const privacy: Privacy = VALID_PRIVACY.includes(p["hs:privacy"] as Privacy)
-      ? (p["hs:privacy"] as Privacy)
-      : "PRIVATE";
+  const tagNames = Array.from(new Set(toCreate.flatMap((f) => f.tags)));
 
-    const loc = await prisma.location.create({
-      data: {
-        userId,
-        title,
-        description: p.description ?? null,
-        address: p.address ?? null,
-        latitude: lat,
-        longitude: lng,
-        isFavorite: p["hs:isFavorite"] ?? false,
-        isBucketList: p["hs:isBucketList"] ?? false,
-        isVisited: p["hs:isVisited"] ?? false,
-        privacy,
+  if (toCreate.length) {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.location.createMany({
+          data: toCreate.map((f) => ({
+            id: f.id,
+            userId,
+            title: f.title,
+            description: f.description,
+            address: f.address,
+            latitude: f.latitude,
+            longitude: f.longitude,
+            isFavorite: f.isFavorite,
+            isBucketList: f.isBucketList,
+            isVisited: f.isVisited,
+            privacy: f.privacy,
+          })),
+        });
+
+        if (tagNames.length) {
+          // Two statements for every tag in the file, rather than two per tag
+          // per spot — a 5,000-spot restore previously issued tens of
+          // thousands of sequential round trips and could not finish.
+          await tx.tag.createMany({
+            data: tagNames.map((name) => ({ userId, name })),
+            skipDuplicates: true,
+          });
+          const tags = await tx.tag.findMany({
+            where: { userId, name: { in: tagNames } },
+            select: { id: true, name: true },
+          });
+          const tagId = new Map(tags.map((t) => [t.name, t.id]));
+
+          await tx.tagOnLocation.createMany({
+            data: toCreate.flatMap((f) =>
+              f.tags
+                .map((name) => tagId.get(name))
+                .filter((id): id is string => Boolean(id))
+                .map((id) => ({ locationId: f.id, tagId: id }))
+            ),
+            skipDuplicates: true,
+          });
+        }
       },
-    });
-
-    const tagNames = p["hs:tags"] ?? [];
-    for (const tagName of tagNames) {
-      const tag = await prisma.tag.upsert({
-        where: { name_userId: { name: tagName, userId } },
-        create: { userId, name: tagName },
-        update: {},
-      });
-      await prisma.tagOnLocation.upsert({
-        where: { locationId_tagId: { locationId: loc.id, tagId: tag.id } },
-        create: { locationId: loc.id, tagId: tag.id },
-        update: {},
-      });
-    }
-
-    existing.push({ latitude: lat, longitude: lng });
-    imported++;
+      { timeout: 30_000 }
+    );
   }
 
   revalidateAppPaths("/locations");
-  return { imported, skipped };
+  return { imported: toCreate.length, skipped, total, truncated, rejected };
 }
 
 // ─── Disconnect ───────────────────────────────────────────────────────────────
