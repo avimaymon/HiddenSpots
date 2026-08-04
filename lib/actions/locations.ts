@@ -22,15 +22,24 @@ async function requireAuth() {
 export async function createLocation(data: unknown) {
   const userId = await requireAuth();
   const validated = locationSchema.parse(data);
-  const clientId =
-    typeof validated.clientId === "string" ? validated.clientId : null;
-  // Idempotent on clientId: upsert returns the original row on collision.
-  const location = await prisma.location.upsert({
-    where: { userId_clientId: { userId, clientId } },
-    update: {},
-    create: { ...validated, userId },
-    include: { category: true, photos: true, tags: { include: { tag: true } } },
-  });
+  const include = {
+    category: true,
+    photos: true,
+    tags: { include: { tag: true } },
+  } as const;
+
+  // Only replayed offline writes carry a clientId, and only they can be
+  // deduplicated — a NULL clientId is never equal to itself in Postgres, so it
+  // can neither collide nor be looked up. Online creates take the plain path.
+  const location = validated.clientId
+    ? await prisma.location.upsert({
+        where: { userId_clientId: { userId, clientId: validated.clientId } },
+        update: {},
+        create: { ...validated, userId },
+        include,
+      })
+    : await prisma.location.create({ data: { ...validated, userId }, include });
+
   revalidateAppPaths("/locations");
   return location;
 }
@@ -515,28 +524,50 @@ export async function getLocationById(id: string) {
 export async function addLocationPhoto(
   locationId: string,
   url: string,
-  isPrimary = false
+  isPrimary = false,
+  /** Offline blob id; makes a replayed upload return the original row. */
+  clientId?: string
 ) {
   const userId = await requireAuth();
   await assertOwns(userId, locationId);
   if (!isAllowedPhotoUrl(url)) throw new Error("Invalid photo URL");
 
-  if (isPrimary) {
-    await prisma.locationPhoto.updateMany({
-      where: { locationId },
-      data: { isPrimary: false },
-    });
-  }
+  const findReplay = () =>
+    clientId
+      ? prisma.locationPhoto.findUnique({ where: { clientId } })
+      : Promise.resolve(null);
 
-  const photo = await prisma.locationPhoto.create({
-    data: { locationId, url, isPrimary },
-  });
+  let photo = await findReplay();
 
-  if (isPrimary) {
-    await prisma.location.update({
-      where: { id: locationId },
-      data: { coverPhotoUrl: url },
-    });
+  if (!photo) {
+    try {
+      // One transaction: demoting the previous primary, inserting, and moving
+      // the cover have to agree. Run apart, a failure between them left the
+      // spot with either no primary photo or two.
+      photo = await prisma.$transaction(async (tx) => {
+        if (isPrimary) {
+          await tx.locationPhoto.updateMany({
+            where: { locationId },
+            data: { isPrimary: false },
+          });
+        }
+        const created = await tx.locationPhoto.create({
+          data: { locationId, url, isPrimary, clientId: clientId ?? null },
+        });
+        if (isPrimary) {
+          await tx.location.update({
+            where: { id: locationId },
+            data: { coverPhotoUrl: url },
+          });
+        }
+        return created;
+      });
+    } catch (e) {
+      // Raced with another replay of the same upload; read the winner's row.
+      if ((e as { code?: string }).code !== "P2002") throw e;
+      photo = await findReplay();
+      if (!photo) throw e;
+    }
   }
 
   revalidateAppPaths("/locations");

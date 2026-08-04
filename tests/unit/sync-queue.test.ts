@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { orderSyncQueue } from "@/lib/offline/coalesce";
 
 /**
  * Last-write-wins queue ordering: items flush FIFO by createdAt.
@@ -26,6 +27,7 @@ type SyncAction =
 
 type SyncQueueItem = {
   id?: number;
+  seq?: number;
   action: SyncAction;
   payload: string;
   createdAt: string;
@@ -34,24 +36,24 @@ type SyncQueueItem = {
 
 const queue: SyncQueueItem[] = [];
 let nextId = 1;
+let nextSeq = 1;
 
 async function enqueueSync(action: SyncQueueItem["action"], payload: object) {
   queue.push({
     id: nextId++,
+    seq: nextSeq++,
     action,
     payload: JSON.stringify(payload),
     createdAt: new Date().toISOString(),
     retries: 0,
   });
-  // ensure distinct timestamps for ordering tests
-  await new Promise((r) => setTimeout(r, 2));
 }
 
 async function flushSyncQueue(handler: (item: SyncQueueItem) => Promise<void>) {
-  const items = [...queue].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  );
-  for (const item of items) {
+  // Mirrors the real flush: ordered by the monotonic `seq`, not by `createdAt`.
+  // Ordering by a timestamp needed a sleep between enqueues to keep them
+  // distinct, which hid the same-millisecond collision that `seq` rules out.
+  for (const item of orderSyncQueue(queue)) {
     await handler(item);
     const idx = queue.findIndex((q) => q.id === item.id);
     if (idx >= 0) queue.splice(idx, 1);
@@ -94,6 +96,7 @@ vi.mock("@/lib/offline/db", () => ({
   dropStuckSyncItems: vi.fn().mockResolvedValue(0),
   takePhotoBlob: vi.fn(),
   deletePhotoBlob: vi.fn(),
+  persistSyncPayload: vi.fn(),
   resolveLocationId: vi.fn(async (id: string) => id),
   resolveMappedId: vi.fn(async (id: string) => id),
   remapClientLocationId: vi.fn(),
@@ -118,6 +121,7 @@ describe("sync queue last-write-wins", () => {
   beforeEach(() => {
     queue.length = 0;
     nextId = 1;
+    nextSeq = 1;
     vi.clearAllMocks();
   });
 
@@ -195,7 +199,14 @@ describe("sync queue last-write-wins", () => {
       createdAt: new Date().toISOString(),
       retries: 0,
     });
-    expect(createCollection).toHaveBeenCalledWith({ name: "מפלים", color: "#22c55e" });
+    // clientId must reach the server: it is the idempotency key that stops a
+    // retried create from becoming a second collection. Stripping it here is
+    // what allowed a lost response to duplicate the row.
+    expect(createCollection).toHaveBeenCalledWith({
+      name: "מפלים",
+      color: "#22c55e",
+      clientId: "tmp-col",
+    });
     expect(remapClientTempId).toHaveBeenCalledWith("tmp-col", "srv-col");
 
     await processSyncItem({

@@ -52,14 +52,15 @@ export async function createCollection(data: unknown) {
   if (validated.parentId) {
     await assertOwnsCollection(userId, validated.parentId);
   }
-  const clientId =
-    typeof validated.clientId === "string" ? validated.clientId : null;
-  // Idempotent on clientId: upsert returns the original row on collision.
-  const collection = await prisma.collection.upsert({
-    where: { userId_clientId: { userId, clientId } },
-    update: {},
-    create: { ...validated, userId },
-  });
+  // Deduplicate replayed offline writes; see createLocation for why a NULL
+  // clientId cannot take this path.
+  const collection = validated.clientId
+    ? await prisma.collection.upsert({
+        where: { userId_clientId: { userId, clientId: validated.clientId } },
+        update: {},
+        create: { ...validated, userId },
+      })
+    : await prisma.collection.create({ data: { ...validated, userId } });
   revalidateAppPaths("/collections");
   return collection;
 }

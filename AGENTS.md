@@ -65,7 +65,22 @@ Two rules when touching it:
   meta row and purged on user mismatch; keep any new table inside that purge.
 
 Queue writes are idempotent via `clientId`. Do not strip it before calling the
-action — that is what allowed a lost response to duplicate a spot.
+action — that is what allowed a lost response to duplicate a spot. `enqueueSync`
+stamps the key for every action in `CREATE_ACTIONS`, so a new call site cannot
+forget it; adding an action to that set means adding a matching `clientId`
+column and unique constraint too.
+
+Two rules when writing the server side of one:
+
+- Branch on the key rather than always upserting. Postgres treats `NULL`s as
+  distinct, which is what lets unlimited online creates share a `NULL`
+  `clientId` — but it also means `WHERE clientId IS NULL` can never match a
+  unique lookup, so only a request that actually carries a key may take the
+  upsert path.
+- If the create has a side effect (`createVisit` bumps `visitCount`), dedupe
+  *before* the write and put the side effect in the transaction. Catching
+  `P2002` inside an interactive transaction does not work: Postgres aborts the
+  transaction on the failed statement, so the recovery read fails too.
 
 ## Database
 

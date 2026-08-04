@@ -25,38 +25,47 @@ export async function createVisit(data: unknown) {
       ? validated.visitedAt
       : new Date(validated.visitedAt);
 
-  const clientId = typeof validated.clientId === "string" ? validated.clientId : null;
+  const { clientId } = validated;
 
-  // Idempotent create: on clientId collision, return the original row without
-  // incrementing visitCount again. Requires a transaction so visitCount is only
-  // incremented on a genuine create.
-  const visit = await prisma.$transaction(async (tx) => {
+  /**
+   * A replay must return the original visit *without* bumping the counter
+   * again — unlike the other creates, this one has a side effect that an
+   * upsert would not protect. Deduplicating before the write (rather than
+   * catching P2002 inside the transaction) is deliberate: Postgres aborts a
+   * transaction on the first failed statement, so a recovery read issued after
+   * the failed insert would itself fail.
+   */
+  const findReplay = () =>
+    clientId
+      ? prisma.visit.findUnique({
+          where: { userId_clientId: { userId, clientId } },
+        })
+      : Promise.resolve(null);
+
+  let visit = await findReplay();
+
+  if (!visit) {
     try {
-      const newVisit = await tx.visit.create({
-        data: { ...validated, visitedAt, userId },
-      });
-      // Only increment on genuine create
-      await tx.location.update({
-        where: { id: validated.locationId },
-        data: {
-          isVisited: true,
-          visitCount: { increment: 1 },
-          lastVisitedAt: visitedAt,
-        },
-      });
-      return newVisit;
+      // Array form: the insert and the counter bump commit together, so a
+      // failure can no longer leave visitCount disagreeing with the rows.
+      [visit] = await prisma.$transaction([
+        prisma.visit.create({ data: { ...validated, visitedAt, userId } }),
+        prisma.location.update({
+          where: { id: validated.locationId },
+          data: {
+            isVisited: true,
+            visitCount: { increment: 1 },
+            lastVisitedAt: visitedAt,
+          },
+        }),
+      ]);
     } catch (e) {
-      // On unique constraint error (clientId collision), find and return existing
-      if ((e as { code?: string }).code === "P2002") {
-        const existing = await tx.visit.findFirst({
-          where: { userId, clientId },
-        });
-        if (!existing) throw e;
-        return existing;
-      }
-      throw e;
+      // Two attempts raced past the check above; the loser reads the winner's row.
+      if ((e as { code?: string }).code !== "P2002") throw e;
+      visit = await findReplay();
+      if (!visit) throw e;
     }
-  });
+  }
 
   revalidateAppPaths(`/locations/${validated.locationId}`, "/dashboard", "/visits");
   return visit;

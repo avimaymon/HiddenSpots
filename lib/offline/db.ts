@@ -305,6 +305,18 @@ function notifySyncQueue() {
   }
 }
 
+/**
+ * Actions that insert a row, and so need an idempotency key to survive a
+ * retry. Membership is what turns on server-side deduplication — anything
+ * added here must have a matching `clientId` column and unique constraint.
+ */
+const CREATE_ACTIONS = new Set<SyncQueueItem["action"]>([
+  "create",
+  "visit",
+  "collection-create",
+  "trip-create",
+]);
+
 export async function enqueueSync(
   action: SyncQueueItem["action"],
   payload: object
@@ -332,6 +344,16 @@ export async function enqueueSync(
     }
   }
 
+  // Stamp an idempotency key centrally rather than at each call site. A queued
+  // create whose response is lost is retried, and without a key the server has
+  // no way to tell the retry from a second spot — so the user gets duplicates.
+  // Minting it here means a new call site cannot forget to, which is how the
+  // six `visit` sites came to lack one.
+  const body =
+    CREATE_ACTIONS.has(action) && !(payload as Record<string, unknown>).clientId
+      ? { ...payload, clientId: crypto.randomUUID() }
+      : payload;
+
   // Assign `seq` inside a transaction so two concurrent enqueues cannot read
   // the same high-water mark and collide.
   await offlineDb.transaction("rw", offlineDb.syncQueue, async () => {
@@ -339,7 +361,7 @@ export async function enqueueSync(
     await offlineDb!.syncQueue.add({
       seq: (last?.seq ?? 0) + 1,
       action,
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify(body),
       createdAt: new Date().toISOString(),
       retries: 0,
     });
@@ -380,6 +402,22 @@ export async function takePhotoBlob(blobId: string): Promise<PhotoBlobRow | unde
 export async function deletePhotoBlob(blobId: string): Promise<void> {
   if (!offlineDb) return;
   await offlineDb.photoBlobs.delete(blobId);
+}
+
+/**
+ * Persist a mutated payload back onto its queue row mid-flush.
+ *
+ * Used to record work that already succeeded but cannot be undone — an
+ * uploaded blob, say — so a later retry of the *same* item can skip it.
+ * Mutating the in-memory payload alone would be lost: the retry re-reads the
+ * row from Dexie and would repeat the upload, orphaning a blob each time.
+ */
+export async function persistSyncPayload(
+  id: number | undefined,
+  payload: Record<string, unknown>
+): Promise<void> {
+  if (!offlineDb || id === undefined) return;
+  await offlineDb.syncQueue.update(id, { payload: JSON.stringify(payload) });
 }
 
 const MAX_RETRIES = 8;

@@ -9,6 +9,7 @@ import {
   dropStuckSyncItems,
   takePhotoBlob,
   deletePhotoBlob,
+  persistSyncPayload,
   remapClientLocationId,
   remapClientTempId,
   resolveLocationId,
@@ -79,9 +80,12 @@ export async function processSyncItem(item: SyncQueueItem) {
     }
     case "upload-photo": {
       const blobId = payload.blobId as string | undefined;
-      const clientId = payload.clientId as string | undefined;
-      if (blobId && !payload.url) {
-        // First attempt: blob exists and URL hasn't been written yet.
+      const uploaded =
+        typeof payload.url === "string" && !payload.url.startsWith("blob:")
+          ? payload.url
+          : undefined;
+
+      if (blobId && !uploaded) {
         const row = await takePhotoBlob(blobId);
         if (!row) throw new Error("Photo blob missing");
         const locationId = await resolveLocationId(row.locationId);
@@ -92,18 +96,28 @@ export async function processSyncItem(item: SyncQueueItem) {
         const res = await fetch("/api/upload", { method: "POST", body: fd });
         if (!res.ok) throw new Error("Upload failed");
         const { url } = (await res.json()) as { url: string };
-        // Idempotency: write URL back into the queue row's payload so a retry
-        // takes the cached-URL branch below and never re-uploads.
+
+        // The blob is now in storage and cannot be un-uploaded. Record that on
+        // the queue row *before* the write that may still fail, so a retry
+        // reuses this URL instead of uploading a second copy and orphaning the
+        // first. Persisting is what makes this real — mutating the in-memory
+        // payload would be dropped when the retry re-reads the row.
         payload.url = url;
-        await addLocationPhoto(locationId, url, row.isPrimary);
+        payload.locationId = locationId;
+        payload.isPrimary = row.isPrimary;
+        await persistSyncPayload(item.id, payload);
+
+        // blobId doubles as the photo's idempotency key server-side.
+        await addLocationPhoto(locationId, url, row.isPrimary, blobId);
         await deletePhotoBlob(blobId);
-      } else if (typeof payload.url === "string" && !payload.url.startsWith("blob:")) {
-        // Retry or cached: URL already in payload, use it directly.
+      } else if (uploaded) {
         await addLocationPhoto(
           await resolveLocationId(payload.locationId as string),
-          payload.url,
-          Boolean(payload.isPrimary)
+          uploaded,
+          Boolean(payload.isPrimary),
+          blobId
         );
+        if (blobId) await deletePhotoBlob(blobId);
       } else {
         throw new Error("Invalid offline photo payload");
       }
