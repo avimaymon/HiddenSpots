@@ -25,11 +25,26 @@ export function rewritePayloadTempIds(
 /** @deprecated alias — prefer rewritePayloadTempIds */
 export const rewritePayloadLocationIds = rewritePayloadTempIds;
 
-export function shouldDeferRetry(retries: number, createdAt: string, now = Date.now()): boolean {
+/**
+ * Exponential backoff between retries: 3s, 6s, 12s, … capped at ~5m.
+ *
+ * Measured from the last attempt, not from enqueue. Measuring from `createdAt`
+ * meant anything queued more than five minutes ago — the normal case after an
+ * offline trip — was always past its backoff window, so a failing item burned
+ * through all its retries in consecutive flushes with no spacing at all.
+ *
+ * A missing `lastAttemptAt` (rows written before it existed) means "attempt
+ * now"; falling back to `createdAt` would reintroduce the bug.
+ */
+export function shouldDeferRetry(
+  retries: number,
+  lastAttemptAt: string | undefined | null,
+  now = Date.now()
+): boolean {
   if (retries <= 0) return false;
-  const created = new Date(createdAt).getTime();
-  if (Number.isNaN(created)) return false;
-  // Exponential backoff: 3s, 6s, 12s, … capped ~5m
+  if (!lastAttemptAt) return false;
+  const last = new Date(lastAttemptAt).getTime();
+  if (Number.isNaN(last)) return false;
   const delay = Math.min(300_000, 3000 * 2 ** Math.min(retries, 7));
-  return now < created + delay;
+  return now < last + delay;
 }

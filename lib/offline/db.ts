@@ -4,8 +4,17 @@ import {
   rewritePayloadTempIds,
   shouldDeferRetry,
 } from "@/lib/offline/id-map";
-import { mergeUpdatePayloads, sameLocationUpdate } from "@/lib/offline/coalesce";
+import {
+  mergeUpdatePayloads,
+  orderSyncQueue,
+  sameLocationUpdate,
+} from "@/lib/offline/coalesce";
 import { rewriteEntityCacheIds } from "@/lib/offline/entity-cache";
+import {
+  isOfflineLocalStorageKey,
+  shouldClaimForUser,
+  shouldPurgeForUser,
+} from "@/lib/offline/scope";
 import { selectOfflineAtlasPack } from "@/lib/offline/atlas-pack";
 
 export { selectOfflineAtlasPack } from "@/lib/offline/atlas-pack";
@@ -25,6 +34,11 @@ export interface CachedLocation {
 
 export interface SyncQueueItem {
   id?: number;
+  /**
+   * Monotonic flush order, assigned at enqueue and never rewritten. Distinct
+   * from `createdAt`, which coalescing updates — see orderSyncQueue.
+   */
+  seq?: number;
   action:
     | "create"
     | "update"
@@ -47,6 +61,8 @@ export interface SyncQueueItem {
   createdAt: string;
   retries: number;
   lastError?: string;
+  /** When the last flush attempt failed — drives the retry backoff. */
+  lastAttemptAt?: string;
 }
 
 export interface PhotoBlobRow {
@@ -66,11 +82,20 @@ export interface IdMapRow {
   createdAt: string;
 }
 
+/** Single-row bookkeeping (currently just which account owns this store). */
+export interface MetaRow {
+  key: string;
+  value: string;
+}
+
+const OWNER_META_KEY = "ownerUserId";
+
 class HiddenSpotsDB extends Dexie {
   locations!: Table<CachedLocation, string>;
   syncQueue!: Table<SyncQueueItem, number>;
   photoBlobs!: Table<PhotoBlobRow, string>;
   idMap!: Table<IdMapRow, string>;
+  meta!: Table<MetaRow, string>;
 
   constructor() {
     super("HiddenSpotsDB");
@@ -93,10 +118,95 @@ class HiddenSpotsDB extends Dexie {
       photoBlobs: "id, locationId, createdAt",
       idMap: "clientId, serverId",
     });
+    // v6 lands account scoping, `seq` ordering and `lastAttemptAt` together.
+    // Splitting them across releases would strand PWA clients — which hold a
+    // cached service worker — on intermediate versions.
+    this.version(6)
+      .stores({
+        locations: "id, updatedAt, isFavorite, isVisited",
+        syncQueue: "++id, seq, createdAt, action, retries",
+        photoBlobs: "id, locationId, createdAt",
+        idMap: "clientId, serverId",
+        meta: "key",
+      })
+      .upgrade(async (tx) => {
+        // Pre-v6 rows carry no owner, so there is no way to tell whose pending
+        // writes these are. Dropping them is the safe failure mode; claiming
+        // them for whoever signs in next is precisely the bug being fixed.
+        await tx.table("syncQueue").clear();
+        await tx.table("photoBlobs").clear();
+        await tx.table("idMap").clear();
+        // The locations table is read-only display data, re-populated on the
+        // next fetch, so it can stay — but it must not outlive a user switch,
+        // which assertOfflineOwner handles.
+      });
   }
 }
 
 export const offlineDb = typeof window !== "undefined" ? new HiddenSpotsDB() : null;
+
+// ─── Account scoping ─────────────────────────────────────────────────────────
+
+/** Wipe every trace of the offline store. Safe to call when signed out. */
+export async function purgeOfflineData(): Promise<void> {
+  if (!offlineDb) return;
+  await Promise.all([
+    offlineDb.syncQueue.clear(),
+    offlineDb.photoBlobs.clear(),
+    offlineDb.idMap.clear(),
+    offlineDb.locations.clear(),
+    offlineDb.meta.clear(),
+  ]).catch(() => undefined);
+
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && isOfflineLocalStorageKey(key)) doomed.push(key);
+    }
+    for (const key of doomed) localStorage.removeItem(key);
+  } catch {
+    /* private mode */
+  }
+
+  notifySyncQueue();
+}
+
+/**
+ * Claim the store for `userId`, or purge it if it belongs to someone else.
+ *
+ * Called at the top of every flush rather than only on sign-out: a tab closed
+ * mid-session, a server-side session expiry, or a sign-out in another tab all
+ * skip the sign-out path, and any of them would otherwise leave one account's
+ * pending writes to drain into the next account that signs in.
+ *
+ * Returns true when the caller may proceed with the store.
+ */
+export async function assertOfflineOwner(userId: string): Promise<boolean> {
+  if (!offlineDb || !userId) return Boolean(offlineDb);
+
+  const row = await offlineDb.meta.get(OWNER_META_KEY).catch(() => undefined);
+  const stored = row?.value ?? null;
+
+  if (shouldPurgeForUser(stored, userId)) {
+    await purgeOfflineData();
+    await offlineDb.meta.put({ key: OWNER_META_KEY, value: userId });
+    return false;
+  }
+
+  if (shouldClaimForUser(stored, userId)) {
+    await offlineDb.meta.put({ key: OWNER_META_KEY, value: userId });
+  }
+
+  return true;
+}
+
+/** Which account this store currently belongs to, if any. */
+export async function getOfflineOwner(): Promise<string | null> {
+  if (!offlineDb) return null;
+  const row = await offlineDb.meta.get(OWNER_META_KEY).catch(() => undefined);
+  return row?.value ?? null;
+}
 
 const OFFLINE_ATLAS_PACK_MAX = 800;
 
@@ -208,9 +318,11 @@ export async function enqueueSync(
       try {
         const prev = JSON.parse(item.payload) as Record<string, unknown>;
         if (!sameLocationUpdate(prev, next)) continue;
+        // Payload only. Touching `seq` or `createdAt` would move the merged
+        // update behind operations enqueued after it — an update → delete →
+        // update sequence then flushed as delete, update and lost the edit.
         await offlineDb.syncQueue.update(item.id!, {
           payload: JSON.stringify(mergeUpdatePayloads(prev, next)),
-          createdAt: new Date().toISOString(),
         });
         notifySyncQueue();
         return;
@@ -219,11 +331,18 @@ export async function enqueueSync(
       }
     }
   }
-  await offlineDb.syncQueue.add({
-    action,
-    payload: JSON.stringify(payload),
-    createdAt: new Date().toISOString(),
-    retries: 0,
+
+  // Assign `seq` inside a transaction so two concurrent enqueues cannot read
+  // the same high-water mark and collide.
+  await offlineDb.transaction("rw", offlineDb.syncQueue, async () => {
+    const last = await offlineDb!.syncQueue.orderBy("seq").last();
+    await offlineDb!.syncQueue.add({
+      seq: (last?.seq ?? 0) + 1,
+      action,
+      payload: JSON.stringify(payload),
+      createdAt: new Date().toISOString(),
+      retries: 0,
+    });
   });
   notifySyncQueue();
 }
@@ -330,18 +449,25 @@ export async function remapClientLocationId(
 }
 
 export async function flushSyncQueue(
-  handler: (item: SyncQueueItem) => Promise<void>
+  handler: (item: SyncQueueItem) => Promise<void>,
+  userId?: string
 ): Promise<{ synced: number; failed: number }> {
   if (!offlineDb) return { synced: 0, failed: 0 };
 
+  // Never drain one account's queue into another's. On a mismatch the store is
+  // purged and this flush is abandoned; the fresh store belongs to `userId`.
+  if (userId && !(await assertOfflineOwner(userId))) {
+    return { synced: 0, failed: 0 };
+  }
+
   const run = async () => {
-    const items = await offlineDb!.syncQueue.orderBy("createdAt").toArray();
+    const items = orderSyncQueue(await offlineDb!.syncQueue.toArray());
     let synced = 0;
     let failed = 0;
     const now = Date.now();
     for (const item of items) {
       if ((item.retries ?? 0) >= MAX_RETRIES) continue;
-      if (shouldDeferRetry(item.retries ?? 0, item.createdAt, now)) continue;
+      if (shouldDeferRetry(item.retries ?? 0, item.lastAttemptAt, now)) continue;
       try {
         await handler(item);
         await offlineDb!.syncQueue.delete(item.id!);
@@ -352,6 +478,7 @@ export async function flushSyncQueue(
         await offlineDb!.syncQueue.update(item.id!, {
           retries: (item.retries ?? 0) + 1,
           lastError: msg.slice(0, 200),
+          lastAttemptAt: new Date().toISOString(),
         });
       }
     }
