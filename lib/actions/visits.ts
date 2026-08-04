@@ -74,7 +74,13 @@ export async function createVisit(data: unknown) {
 export async function updateVisit(id: string, data: unknown) {
   const userId = await requireAuth();
   await assertOwns(userId, id);
-  const validated = visitSchema.partial().parse(data);
+  // locationId and clientId are not editable. Only the *visit* is ownership
+  // checked here, so accepting locationId let a user re-point their visit at a
+  // stranger's spot — and the recount then rewrote that spot's visitCount and
+  // isVisited. clientId is the idempotency key; changing it would let one
+  // queued write be replayed as several rows.
+  const { locationId: _locationId, clientId: _clientId, ...validated } =
+    visitSchema.partial().parse(data);
   const visitedAt =
     validated.visitedAt instanceof Date
       ? validated.visitedAt

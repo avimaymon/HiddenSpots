@@ -5,18 +5,19 @@ import { prisma } from "@/lib/db";
 import { seedSystemCategories } from "@/lib/auth/system-categories";
 import { seedStarterCollections } from "@/lib/auth/starter-collections";
 import { rateLimit } from "@/lib/rate-limit";
+import { emailSchema } from "@/lib/auth/email";
 import { z } from "zod";
 
 const signupSchema = z.object({
   name: z.string().min(1).max(100),
-  email: z.string().email(),
+  email: emailSchema,
   password: z.string().min(8).max(100),
 });
 
 export async function registerUser(data: unknown) {
   const validated = signupSchema.parse(data);
   const { ok } = await rateLimit(
-    `register:${validated.email.toLowerCase()}`,
+    `register:${validated.email}`,
     5,
     60 * 60 * 1000,
     { failClosed: true }

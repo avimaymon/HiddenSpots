@@ -18,6 +18,18 @@ const eslintConfig = defineConfig([
       "react-hooks/incompatible-library": "off",
       // shadcn/ui generated files use empty interface extensions.
       "@typescript-eslint/no-empty-object-type": "off",
+      // Allow the `const { secret: _secret, ...rest }` idiom used to drop
+      // fields a caller must not be able to set (see updateVisit). Naming the
+      // omitted key documents the intent far better than a later `delete`.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
 ]);

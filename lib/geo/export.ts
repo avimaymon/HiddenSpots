@@ -101,9 +101,20 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function csvCell(val: string): string {
-  if (val.includes(",") || val.includes('"') || val.includes("\n")) {
-    return `"${val.replace(/"/g, '""')}"`;
+/**
+ * RFC-4180 quoting, plus neutralisation of spreadsheet formulas.
+ *
+ * A cell starting with = + - @ (or tab/CR, which Excel strips before parsing)
+ * is executed as a formula on open. A spot titled `=HYPERLINK(...)` therefore
+ * runs on the machine of whoever opens the export — and titles here can come
+ * from an import or a collaborator, not just from the person exporting. The
+ * leading apostrophe is the standard defusal: spreadsheets treat the cell as
+ * text and do not display it.
+ */
+export function csvCell(val: string): string {
+  const defused = /^[=+\-@\t\r]/.test(val) ? `'${val}` : val;
+  if (/[",\n\r]/.test(defused)) {
+    return `"${defused.replace(/"/g, '""')}"`;
   }
-  return val;
+  return defused;
 }

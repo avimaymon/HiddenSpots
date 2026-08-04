@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { backupUserToDrive } from "@/lib/drive/backup-core";
@@ -15,8 +16,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 503 });
   }
 
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${secret}`) {
+  // Constant-time: a plain !== leaks how much of the secret matched through
+  // its early exit, which is enough to recover it byte by byte over many
+  // requests. lib/auth/oauth-state.ts already compares this way.
+  const authHeader = req.headers.get("authorization") ?? "";
+  const expected = `Bearer ${secret}`;
+  const provided = Buffer.from(authHeader);
+  const target = Buffer.from(expected);
+  if (
+    provided.length !== target.length ||
+    !timingSafeEqual(provided, target)
+  ) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

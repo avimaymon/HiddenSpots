@@ -27,7 +27,13 @@ export async function GET(req: Request) {
 
   if (collectionId) {
     const cl = await prisma.collectionLocation.findMany({
-      where: { collectionId, collection: { userId: session.user.id } },
+      // deletedAt guard: the default branch filters trashed spots, these two
+      // did not, so anything the user had thrown away came back in an export.
+      where: {
+        collectionId,
+        collection: { userId: session.user.id },
+        location: { deletedAt: null },
+      },
       include: {
         location: {
           select: {
@@ -46,7 +52,11 @@ export async function GET(req: Request) {
     locations = cl.map((c) => c.location);
   } else if (tripId) {
     const tl = await prisma.tripLocation.findMany({
-      where: { tripId, trip: { userId: session.user.id } },
+      where: {
+        tripId,
+        trip: { userId: session.user.id },
+        location: { deletedAt: null },
+      },
       include: {
         location: {
           select: {

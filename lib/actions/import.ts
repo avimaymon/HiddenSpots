@@ -7,6 +7,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { IMPORT_LOCATIONS_MAX } from "@/lib/import/limits";
 import { DUPE_SCAN_MAX, EXPORT_LOCATIONS_MAX } from "@/lib/export/limits";
 import { approxDistanceMeters, DUPE_RADIUS_METERS } from "@/lib/geo/dupe";
+import { csvCell } from "@/lib/geo/export";
 import { locationSchema } from "@/lib/validations/schemas";
 import type { LocationFormData } from "@/lib/validations/schemas";
 
@@ -197,13 +198,17 @@ export async function exportLocationsAsCsv() {
 
   const header = "name,latitude,longitude,category,description,tags,isFavorite,isVisited,createdAt";
   const rows = locations.map((loc) => {
+    // csvCell, not JSON.stringify: JSON escapes an embedded quote as \" while
+    // CSV requires "", so any title containing a quote produced a file that
+    // every spreadsheet parsed wrongly from that column on. It also defuses
+    // formula-leading cells.
     const row = [
-      JSON.stringify(loc.title),
+      csvCell(loc.title),
       loc.latitude,
       loc.longitude,
-      JSON.stringify(loc.category?.name ?? ""),
-      JSON.stringify(loc.description ?? ""),
-      JSON.stringify(loc.tags.map((t) => t.tag.name).join(";")),
+      csvCell(loc.category?.name ?? ""),
+      csvCell(loc.description ?? ""),
+      csvCell(loc.tags.map((t) => t.tag.name).join(";")),
       loc.isFavorite,
       loc.isVisited,
       loc.createdAt.toISOString(),

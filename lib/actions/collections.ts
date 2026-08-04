@@ -17,6 +17,32 @@ async function requireAuth() {
   return session.user.id;
 }
 
+/** Depth ceiling for the ancestry walk — also the practical folder-nesting limit. */
+const MAX_FOLDER_DEPTH = 64;
+
+/**
+ * Reject a re-parent that would put `id` inside its own subtree.
+ *
+ * A direct self-parent is not the only cycle: with A already the parent of B,
+ * setting A's parent to B closes the loop just as effectively, and any
+ * recursive folder render then never terminates. Walking up from the proposed
+ * parent is what catches the indirect case.
+ */
+async function assertNotDescendant(userId: string, id: string, parentId: string) {
+  let cursor: string | null = parentId;
+  for (let depth = 0; cursor && depth < MAX_FOLDER_DEPTH; depth++) {
+    if (cursor === id) throw new Error("A collection cannot contain itself");
+    const row: { parentId: string | null } | null = await prisma.collection.findFirst({
+      where: { id: cursor, userId },
+      select: { parentId: true },
+    });
+    cursor = row?.parentId ?? null;
+  }
+  // Hitting the ceiling means the existing chain is already longer than any
+  // real folder tree, which only happens if a cycle predates this check.
+  if (cursor) throw new Error("Collection nesting is too deep");
+}
+
 export async function getLocationCollectionIds(locationId: string) {
   const userId = await requireAuth();
   const members = await prisma.collectionLocation.findMany({
@@ -69,6 +95,16 @@ export async function updateCollection(id: string, data: unknown) {
   const userId = await requireAuth();
   await assertOwnsCollection(userId, id);
   const validated = collectionSchema.partial().parse(data);
+
+  // createCollection validates parentId; this path did not, so a re-parent
+  // could file a folder under a stranger's collection, or under itself — the
+  // latter hangs every recursive folder render.
+  if (validated.parentId) {
+    if (validated.parentId === id) throw new Error("A collection cannot contain itself");
+    await assertOwnsCollection(userId, validated.parentId);
+    await assertNotDescendant(userId, id, validated.parentId);
+  }
+
   const collection = await prisma.collection.update({
     where: { id },
     data: validated,

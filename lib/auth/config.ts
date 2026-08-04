@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { seedSystemCategories } from "@/lib/auth/system-categories";
 import { seedStarterCollections } from "@/lib/auth/starter-collections";
 import { rateLimit } from "@/lib/rate-limit";
+import { normalizeEmail } from "@/lib/auth/email";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.AUTH_SECRET,
@@ -37,15 +38,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
-        const email = String(credentials.email).toLowerCase();
+        const email = normalizeEmail(String(credentials.email));
         const { ok } = await rateLimit(`creds:${email}`, 10, 60_000, {
           failClosed: true,
         });
         // Same null as bad password — no rate-limit oracle.
         if (!ok) return null;
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        });
+        // Must use the same normalised address as the rate-limit key above;
+        // looking up the raw input meant anyone who registered with a capital
+        // could not sign in by typing their address in lower case.
+        const user = await prisma.user.findUnique({ where: { email } });
         if (!user?.passwordHash) return null;
         const valid = await bcrypt.compare(
           credentials.password as string,

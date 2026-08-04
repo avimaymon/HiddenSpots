@@ -4,10 +4,11 @@ import { randomBytes, createHash } from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
+import { emailSchema } from "@/lib/auth/email";
 import { z } from "zod";
 
 const requestSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
 });
 
 const resetSchema = z.object({
@@ -63,7 +64,7 @@ async function sendResetEmail(
 
 export async function requestPasswordReset(data: unknown) {
   const { email } = requestSchema.parse(data);
-  const { ok } = await rateLimit(`pw-reset:${email.toLowerCase()}`, 3, 60 * 60 * 1000, {
+  const { ok } = await rateLimit(`pw-reset:${email}`, 3, 60 * 60 * 1000, {
     failClosed: true,
   });
   if (!ok) throw new Error("Too many requests");
