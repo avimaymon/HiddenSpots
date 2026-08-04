@@ -24,13 +24,18 @@ export function LandingHero() {
 
       <main id="main-content" className="relative z-10 flex-1 flex flex-col justify-center px-4 sm:px-8 pb-16">
         <div className="max-w-3xl mx-auto w-full text-center space-y-6 sm:space-y-8">
-          <FadeIn delay={0.05}>
+          {/* priority: this wordmark is the page's LCP element. Fading it in
+              from opacity 0 meant it could not count as painted until the
+              animation finished, so a 459ms server response reported a 3.7s
+              LCP. It keeps the slide, and the delay is dropped so nothing
+              gates first paint. */}
+          <FadeIn delay={0} priority>
             <p className="font-display text-6xl sm:text-7xl md:text-8xl font-extrabold tracking-tight leading-none">
               <span className="text-gradient">HiddenSpots</span>
             </p>
           </FadeIn>
 
-          <FadeIn delay={0.18} y={18}>
+          <FadeIn delay={0.12} y={18} priority>
             <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold text-foreground/90 leading-snug max-w-xl mx-auto">
               {t("landingHeadline")}
             </h1>

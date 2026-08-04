@@ -11,15 +11,29 @@ export function FadeIn({
   className,
   delay = 0,
   y = 12,
+  priority = false,
   ...rest
-}: HTMLMotionProps<"div"> & { delay?: number; y?: number }) {
+}: HTMLMotionProps<"div"> & { delay?: number; y?: number; priority?: boolean }) {
   const reduce = useReducedMotion();
+
+  /**
+   * `priority` means "this is above the fold" — it keeps the slide but starts
+   * fully opaque.
+   *
+   * An element at opacity 0 has not painted, so it cannot be the Largest
+   * Contentful Paint until the animation has run. The landing headline *is*
+   * the LCP element, and fading it in cost ~3.2s of render delay against a
+   * 459ms TTFB — the page was fast and then waited on a decoration. A
+   * translated element paints immediately and still reads as a lift.
+   */
+  const initialOpacity = priority ? 1 : 0;
+
   return (
     <motion.div
       className={className}
       // `initial={false}` would discard `y` entirely — the lift the landing
       // hero asks for by passing y={18} etc. Transform-only, so no CLS.
-      initial={reduce ? false : { opacity: 0, y }}
+      initial={reduce ? false : { opacity: initialOpacity, y }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduce ? 0 : 0.45, delay: reduce ? 0 : delay, ease: EASE }}
       suppressHydrationWarning

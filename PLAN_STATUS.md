@@ -100,9 +100,15 @@ Updated after T70–T107: security/privacy hardening, offline create/remap/disca
   disturb. Wants a deliberate visual pass, not a one-line change late in a
   hardening run.
 - **Lighthouse performance ≥0.90 (PLAN §19.18).** Measured 0.87 on `/he` and
-  0.85 on `/he/signin` at 320px mobile after the image and CSS work. LCP
-  (~3.9s) is what remains; FCP is 1.2s and CLS is 0.000. The gate sits at 0.78
-  — honest against measurement rather than aspirational.
+  0.85 on `/he/signin` at 320px mobile after the image and CSS work. FCP is
+  1.2s and CLS is 0.000; LCP (~3.9s) is the whole gap, and it is **almost
+  entirely render delay** — TTFB 458ms, load delay 0, load time 0, render
+  delay 3386ms on a *text* element. Removing the hero's opacity fade was tried
+  and verified applied (SSR now emits `opacity:1`) but did not move it, so the
+  cause is still open. Next suspects: `.text-gradient` paints glyphs through
+  `bg-clip-text` + `text-transparent`; webfont timing; and 732ms of script
+  evaluation contending for the main thread. The gate sits at 0.78 — honest
+  against measurement rather than aspirational.
 - **`noUncheckedIndexedAccess`.** 128 sites. Worth doing, but it is a
   mechanical sweep whose diff would bury the substantive fixes in this pass.
 
