@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { activeLocationWhere } from "@/lib/db/filters";
 import { locationSchema } from "@/lib/validations/schemas";
 import { assertCanEditLocation } from "@/lib/permissions/share-access";
+import { assertLocationAccess } from "@/lib/permissions/resource-access";
 import { stripOwnerOnlyLocationFields } from "@/lib/permissions/owner-only-fields";
 import { isAllowedPhotoUrl } from "@/lib/media/photo-url";
 import { parseHebrewQuery, hasNlFilters } from "@/lib/search/hebrew-nl";
@@ -558,10 +559,38 @@ export async function getRandomLocation() {
   return results[0] ?? null;
 }
 
+/**
+ * A spot's detail page, for its owner or anyone holding a share on it.
+ *
+ * This was owner-scoped while `updateLocation` accepted EDIT grants, so a
+ * collaborator could successfully save changes to a spot whose page returned
+ * 404 for them — the permission model disagreed with itself depending on
+ * direction. Enforcing on the read path too is the point.
+ *
+ * A collaborator does not get the owner's view of it: the owner-only fields
+ * are stripped (privateNotes above all), and visits are narrowed to the
+ * requester's own, since a visit log is a personal diary rather than shared
+ * metadata about the place.
+ */
 export async function getLocationById(id: string) {
   const userId = await requireAuth();
-  return prisma.location.findFirst({
-    where: { id, userId, ...activeLocationWhere },
+
+  let isOwner = true;
+  try {
+    await assertOwns(userId, id);
+  } catch {
+    isOwner = false;
+    try {
+      await assertLocationAccess(userId, id, "VIEW");
+    } catch {
+      // Same null the owner-scoped query returned for a missing spot, so this
+      // does not become an oracle for which ids exist.
+      return null;
+    }
+  }
+
+  const location = await prisma.location.findFirst({
+    where: { id, ...activeLocationWhere, ...(isOwner ? { userId } : {}) },
     include: {
       category: true,
       // Caps on a page rendered for every spot. Unbounded, a well-used spot
@@ -574,6 +603,7 @@ export async function getLocationById(id: string) {
       },
       tags: { include: { tag: true } },
       visits: {
+        where: isOwner ? undefined : { userId },
         include: { photos: { take: LOCATION_DETAIL_VISIT_PHOTOS_MAX } },
         orderBy: { visitedAt: "desc" },
         take: LOCATION_DETAIL_VISITS_MAX,
@@ -581,6 +611,16 @@ export async function getLocationById(id: string) {
       _count: { select: { visits: true } },
     },
   });
+
+  if (!location || isOwner) return location;
+
+  return {
+    ...stripOwnerOnlyLocationFields(location as unknown as Record<string, unknown>),
+    // Preserved deliberately: the collaborator must still be told the spot is
+    // fuzzed, or the map silently implies a precision it does not have.
+    privacy: location.privacy,
+    fuzzyCoordinates: location.fuzzyCoordinates,
+  } as typeof location;
 }
 
 export async function addLocationPhoto(

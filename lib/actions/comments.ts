@@ -91,8 +91,31 @@ export async function addCommentForShareToken(
   return createCommentForUser(locationId, userId, body);
 }
 
+/**
+ * Delete a comment. The author may remove their own; the owner of the spot may
+ * remove any comment on it.
+ *
+ * Scoping this to `{ id, userId }` alone left the owner unable to moderate
+ * their own spot: an abusive comment from someone holding a COMMENT grant
+ * could only be removed by its author — that is, by the person who wrote it.
+ * The owner's only recourse was revoking the share, which does not delete what
+ * was already posted.
+ */
 export async function deleteComment(id: string) {
   const userId = await requireAuth();
-  const result = await prisma.comment.deleteMany({ where: { id, userId } });
-  if (result.count === 0) throw new Error("Not found");
+
+  const comment = await prisma.comment.findUnique({
+    where: { id },
+    select: { userId: true, location: { select: { userId: true } } },
+  });
+
+  // "Not found" rather than "Forbidden", matching resource-access: the
+  // distinction would otherwise confirm a comment id exists.
+  if (!comment) throw new Error("Not found");
+
+  const isAuthor = comment.userId === userId;
+  const isSpotOwner = comment.location?.userId === userId;
+  if (!isAuthor && !isSpotOwner) throw new Error("Not found");
+
+  await prisma.comment.delete({ where: { id } });
 }
