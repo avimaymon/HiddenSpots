@@ -63,8 +63,12 @@ export async function getTripById(id: string) {
 export async function createTrip(data: unknown) {
   const userId = await requireAuth();
   const validated = tripSchema.parse(data);
-  const trip = await prisma.trip.create({
-    data: {
+  const clientId = typeof validated.clientId === "string" ? validated.clientId : null;
+  // Idempotent on clientId: upsert returns the original row on collision.
+  const trip = await prisma.trip.upsert({
+    where: { userId_clientId: { userId, clientId } },
+    update: {},
+    create: {
       ...validated,
       userId,
       ...(validated.startDate && { startDate: new Date(validated.startDate) }),

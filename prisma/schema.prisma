@@ -111,9 +111,10 @@ model User {
 // ─────────────────────────────────────────────
 
 model Location {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String  @id @default(cuid())
+  clientId String?
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Core
   title       String
@@ -192,6 +193,7 @@ model Location {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, clientId])
   @@index([userId])
   @@index([latitude, longitude])
   @@index([userId, isFavorite])
@@ -203,7 +205,8 @@ model Location {
 }
 
 model LocationPhoto {
-  id         String   @id @default(cuid())
+  id       String  @id @default(cuid())
+  clientId String? @unique
   locationId String
   location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
@@ -270,13 +273,14 @@ model TagOnLocation {
 // ─────────────────────────────────────────────
 
 model Collection {
-  id          String       @id @default(cuid())
+  id          String  @id @default(cuid())
+  clientId    String?
   userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   name        String
   description String?
-  color       String       @default("#6366f1")
-  icon        String       @default("folder")
+  color       String  @default("#6366f1")
+  icon        String  @default("folder")
   privacy     PrivacyLevel @default(PRIVATE)
   sortOrder   Int          @default(0)
   parentId    String?
@@ -289,6 +293,7 @@ model Collection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, clientId])
   @@index([userId])
   @@index([parentId])
 }
@@ -324,9 +329,10 @@ model CollectionLocation {
 // ─────────────────────────────────────────────
 
 model Visit {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String  @id @default(cuid())
+  clientId String?
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   locationId String
   location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
@@ -342,6 +348,7 @@ model Visit {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, clientId])
   @@index([userId])
   @@index([locationId])
   @@index([userId, visitedAt])
@@ -365,9 +372,10 @@ model VisitPhoto {
 // ─────────────────────────────────────────────
 
 model Trip {
-  id          String       @id @default(cuid())
+  id          String  @id @default(cuid())
+  clientId    String?
   userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   name        String
   description String?
   startDate   DateTime?
@@ -385,6 +393,7 @@ model Trip {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, clientId])
   @@index([userId])
 }
 

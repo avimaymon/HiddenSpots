@@ -22,8 +22,13 @@ async function requireAuth() {
 export async function createLocation(data: unknown) {
   const userId = await requireAuth();
   const validated = locationSchema.parse(data);
-  const location = await prisma.location.create({
-    data: { ...validated, userId },
+  const clientId =
+    typeof validated.clientId === "string" ? validated.clientId : null;
+  // Idempotent on clientId: upsert returns the original row on collision.
+  const location = await prisma.location.upsert({
+    where: { userId_clientId: { userId, clientId } },
+    update: {},
+    create: { ...validated, userId },
     include: { category: true, photos: true, tags: { include: { tag: true } } },
   });
   revalidateAppPaths("/locations");

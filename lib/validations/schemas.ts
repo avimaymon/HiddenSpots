@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const locationSchema = z.object({
+  clientId: z.string().optional(),
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
   latitude: z.number().min(-90).max(90),
@@ -41,6 +42,7 @@ export const locationSchema = z.object({
 export type LocationFormData = z.infer<typeof locationSchema>;
 
 export const collectionSchema = z.object({
+  clientId: z.string().optional(),
   name: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#6366f1"),
@@ -50,6 +52,7 @@ export const collectionSchema = z.object({
 });
 
 export const visitSchema = z.object({
+  clientId: z.string().optional(),
   locationId: z.string(),
   visitedAt: z.string().or(z.date()),
   rating: z.number().min(1).max(5).optional(),
@@ -60,6 +63,7 @@ export const visitSchema = z.object({
 });
 
 export const tripSchema = z.object({
+  clientId: z.string().optional(),
   name: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   startDate: z.string().optional(),

@@ -63,9 +63,7 @@ export async function processSyncItem(item: SyncQueueItem) {
     case "create": {
       const clientId =
         typeof payload.clientId === "string" ? payload.clientId : undefined;
-      const rest = { ...payload };
-      delete rest.clientId;
-      const loc = await createLocation(rest);
+      const loc = await createLocation(payload);
       if (clientId && loc?.id) {
         await remapClientLocationId(clientId, loc.id);
       }
@@ -81,7 +79,9 @@ export async function processSyncItem(item: SyncQueueItem) {
     }
     case "upload-photo": {
       const blobId = payload.blobId as string | undefined;
-      if (blobId) {
+      const clientId = payload.clientId as string | undefined;
+      if (blobId && !payload.url) {
+        // First attempt: blob exists and URL hasn't been written yet.
         const row = await takePhotoBlob(blobId);
         if (!row) throw new Error("Photo blob missing");
         const locationId = await resolveLocationId(row.locationId);
@@ -92,9 +92,13 @@ export async function processSyncItem(item: SyncQueueItem) {
         const res = await fetch("/api/upload", { method: "POST", body: fd });
         if (!res.ok) throw new Error("Upload failed");
         const { url } = (await res.json()) as { url: string };
+        // Idempotency: write URL back into the queue row's payload so a retry
+        // takes the cached-URL branch below and never re-uploads.
+        payload.url = url;
         await addLocationPhoto(locationId, url, row.isPrimary);
         await deletePhotoBlob(blobId);
       } else if (typeof payload.url === "string" && !payload.url.startsWith("blob:")) {
+        // Retry or cached: URL already in payload, use it directly.
         await addLocationPhoto(
           await resolveLocationId(payload.locationId as string),
           payload.url,
@@ -128,12 +132,10 @@ export async function processSyncItem(item: SyncQueueItem) {
     case "collection-create": {
       const clientId =
         typeof payload.clientId === "string" ? payload.clientId : undefined;
-      const rest = { ...payload };
-      delete rest.clientId;
-      if (typeof rest.parentId === "string") {
-        rest.parentId = await resolveMappedId(rest.parentId);
+      if (typeof payload.parentId === "string") {
+        payload.parentId = await resolveMappedId(payload.parentId);
       }
-      const col = await createCollection(rest);
+      const col = await createCollection(payload);
       if (clientId && col?.id) {
         await remapClientTempId(clientId, col.id);
       }

@@ -25,18 +25,37 @@ export async function createVisit(data: unknown) {
       ? validated.visitedAt
       : new Date(validated.visitedAt);
 
-  const visit = await prisma.visit.create({
-    data: { ...validated, visitedAt, userId },
-  });
+  const clientId = typeof validated.clientId === "string" ? validated.clientId : null;
 
-  // Update location stats
-  await prisma.location.update({
-    where: { id: validated.locationId },
-    data: {
-      isVisited: true,
-      visitCount: { increment: 1 },
-      lastVisitedAt: visitedAt,
-    },
+  // Idempotent create: on clientId collision, return the original row without
+  // incrementing visitCount again. Requires a transaction so visitCount is only
+  // incremented on a genuine create.
+  const visit = await prisma.$transaction(async (tx) => {
+    try {
+      const newVisit = await tx.visit.create({
+        data: { ...validated, visitedAt, userId },
+      });
+      // Only increment on genuine create
+      await tx.location.update({
+        where: { id: validated.locationId },
+        data: {
+          isVisited: true,
+          visitCount: { increment: 1 },
+          lastVisitedAt: visitedAt,
+        },
+      });
+      return newVisit;
+    } catch (e) {
+      // On unique constraint error (clientId collision), find and return existing
+      if ((e as { code?: string }).code === "P2002") {
+        const existing = await tx.visit.findFirst({
+          where: { userId, clientId },
+        });
+        if (!existing) throw e;
+        return existing;
+      }
+      throw e;
+    }
   });
 
   revalidateAppPaths(`/locations/${validated.locationId}`, "/dashboard", "/visits");

@@ -52,8 +52,13 @@ export async function createCollection(data: unknown) {
   if (validated.parentId) {
     await assertOwnsCollection(userId, validated.parentId);
   }
-  const collection = await prisma.collection.create({
-    data: { ...validated, userId },
+  const clientId =
+    typeof validated.clientId === "string" ? validated.clientId : null;
+  // Idempotent on clientId: upsert returns the original row on collision.
+  const collection = await prisma.collection.upsert({
+    where: { userId_clientId: { userId, clientId } },
+    update: {},
+    create: { ...validated, userId },
   });
   revalidateAppPaths("/collections");
   return collection;
