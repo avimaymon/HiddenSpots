@@ -43,6 +43,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
+        // Drives the `@media (pointer: coarse)` touch-target rule in
+        // globals.css, which was written but matched no element in the app
+        // because the attribute was never emitted — leaving every icon-sm
+        // control at 32x32 on touch, under the WCAG 2.5.5 floor.
+        data-size={size ?? "default"}
         ref={ref}
         {...props}
       />

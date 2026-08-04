@@ -19,6 +19,8 @@ export function LocationPopup({ location, onClick, onNavigateMore }: Props) {
               src={location.coverPhotoUrl}
               alt={location.title}
               fill
+              // Map popup is a fixed-width card, not viewport-width.
+              sizes="288px"
               className="object-cover transition-transform group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />

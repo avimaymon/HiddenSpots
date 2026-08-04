@@ -256,7 +256,14 @@ export function QuickAddSheet({ open, onOpenChange, coords, categories, onCreate
                   )}
                 >
                   {photoPreview ? (
-                    <Image src={photoPreview} alt="" fill unoptimized className="object-cover rounded-xl" />
+                    <Image
+                      src={photoPreview}
+                      alt=""
+                      fill
+                      unoptimized
+                      sizes="96px"
+                      className="object-cover rounded-xl"
+                    />
                   ) : (
                     <Camera className="h-5 w-5 text-muted-foreground" />
                   )}

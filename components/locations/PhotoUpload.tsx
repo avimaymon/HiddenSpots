@@ -138,7 +138,8 @@ export function PhotoUpload({
         <div className="grid grid-cols-4 gap-2">
           {existingPhotos.map((photo) => (
             <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden group">
-              <Image src={photo.url} alt="" fill className="object-cover" />
+              {/* 4-column grid of square thumbs. */}
+              <Image src={photo.url} alt="" fill sizes="25vw" className="object-cover" />
               {onRemove && (
                 <button
                   type="button"
@@ -153,7 +154,7 @@ export function PhotoUpload({
           ))}
           {previews.map((p, i) => (
             <div key={i} className="relative aspect-square rounded-lg overflow-hidden">
-              <Image src={p.url} alt="" fill unoptimized className="object-cover" />
+              <Image src={p.url} alt="" fill unoptimized sizes="25vw" className="object-cover" />
               {p.uploading && (
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                   <Loader2 className="h-4 w-4 animate-spin text-white" />

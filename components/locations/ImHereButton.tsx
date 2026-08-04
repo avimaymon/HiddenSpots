@@ -124,7 +124,7 @@ export function ImHereButton({
 
       {photoPreview && !done && (
         <div className="relative h-24 w-full rounded-xl overflow-hidden bg-muted">
-          <Image src={photoPreview} alt="" fill className="object-cover" />
+          <Image src={photoPreview} alt="" fill sizes="100vw" className="object-cover" />
           <button
             type="button"
             className="absolute top-1 end-1 h-7 w-7 rounded-full bg-black/50 text-white flex items-center justify-center"

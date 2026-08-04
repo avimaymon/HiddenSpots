@@ -92,7 +92,7 @@ export function VisitsClientPage({
                   <Link href={`/locations/${visit.locationId}`} className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="relative h-12 w-12 rounded-xl overflow-hidden shrink-0 bg-muted">
                       {photo ? (
-                        <Image src={photo.url} alt="" fill className="object-cover" />
+                        <Image src={photo.url} alt="" fill sizes="48px" className="object-cover" />
                       ) : (
                         <div className="h-full flex items-center justify-center">
                           <MapPin className="h-4 w-4 text-muted-foreground" />

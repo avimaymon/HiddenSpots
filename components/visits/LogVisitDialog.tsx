@@ -252,7 +252,7 @@ export function LogVisitDialog({
             />
             {photoPreview ? (
               <div className="relative h-32 rounded-xl overflow-hidden border border-border/50">
-                <Image src={photoPreview} alt="" fill className="object-cover" unoptimized />
+                <Image src={photoPreview} alt="" fill sizes="100vw" className="object-cover" unoptimized />
                 <Button
                   type="button"
                   size="icon-sm"

@@ -346,7 +346,14 @@ export function LocationDetailPanel({
     <div className="h-full flex flex-col min-h-0">
       {primaryPhoto ? (
         <div className="relative h-40 sm:h-48 shrink-0">
-          <Image src={primaryPhoto.url} alt={location.title} fill className="object-cover" />
+          {/* Side panel, not full viewport — capped at the panel's width. */}
+          <Image
+            src={primaryPhoto.url}
+            alt={location.title}
+            fill
+            sizes="(min-width: 640px) 420px, 100vw"
+            className="object-cover"
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
           <Button
             variant="ghost"
@@ -551,7 +558,13 @@ export function LocationDetailPanel({
                       key={photo.id}
                       className="relative aspect-square rounded-xl overflow-hidden ring-1 ring-border/50"
                     >
-                      <Image src={photo.url} alt={photo.caption ?? ""} fill className="object-cover" />
+                      <Image
+                        src={photo.url}
+                        alt={photo.caption ?? ""}
+                        fill
+                        sizes="(min-width: 640px) 140px, 33vw"
+                        className="object-cover"
+                      />
                     </div>
                   ))}
                 </div>

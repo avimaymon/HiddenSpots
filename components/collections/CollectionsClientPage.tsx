@@ -273,7 +273,13 @@ export function CollectionsClientPage({ initialCollections }: Props) {
                         {col.locations.slice(0, 4).map(({ location }) => (
                           <div key={location.id} className="relative h-10 w-10 rounded-lg overflow-hidden bg-muted flex-1 max-w-12">
                             {location.photos[0] ? (
-                              <Image src={location.photos[0].url} alt="" fill className="object-cover" />
+                              <Image
+                                src={location.photos[0].url}
+                                alt=""
+                                fill
+                                sizes="48px"
+                                className="object-cover"
+                              />
                             ) : (
                               <div className="h-full flex items-center justify-center">
                                 <MapPin className="h-3 w-3 text-muted-foreground" />
@@ -292,7 +298,13 @@ export function CollectionsClientPage({ initialCollections }: Props) {
                       {col.locations.slice(0, 4).map(({ location }) => (
                         <div key={location.id} className="relative h-10 w-10 rounded-lg overflow-hidden bg-muted flex-1 max-w-12">
                           {location.photos[0] ? (
-                            <Image src={location.photos[0].url} alt="" fill className="object-cover" />
+                            <Image
+                              src={location.photos[0].url}
+                              alt=""
+                              fill
+                              sizes="48px"
+                              className="object-cover"
+                            />
                           ) : (
                             <div className="h-full flex items-center justify-center">
                               <MapPin className="h-3 w-3 text-muted-foreground" />

@@ -1,5 +1,8 @@
 @import "tailwindcss";
-@import "mapbox-gl/dist/mapbox-gl.css";
+/* mapbox-gl's stylesheet is imported by components/map/providers/MapboxProvider
+   instead. Pulling it in globally shipped it to signin, landing, settings and
+   the share pages — routes with no map at all — partly defeating the provider
+   code-split in components/map/MapView. */
 
 @theme inline {
   --breakpoint-xs: 360px;
@@ -596,9 +599,11 @@
     min-width: 2.75rem;
   }
 
-  /* Chip / filter buttons */
-  [role="tab"],
-  [role="button"] {
+  /* Chip / filter buttons. `[role="button"]` used to be listed here too, but
+     nothing in the app carries it — a native <button> does not match, and it
+     silently covered nothing. Icon buttons are handled by the data-size rule
+     above; add a selector here only when something real needs it. */
+  [role="tab"] {
     min-height: 2.5rem;
   }
 }

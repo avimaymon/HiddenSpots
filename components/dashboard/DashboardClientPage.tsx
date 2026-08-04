@@ -356,7 +356,7 @@ function SpotRow({
     >
       <div className="relative h-10 w-10 rounded-lg overflow-hidden shrink-0 bg-muted">
         {photo ? (
-          <Image src={photo} alt="" fill className="object-cover" />
+          <Image src={photo} alt="" fill sizes="40px" className="object-cover" />
         ) : (
           <div className="h-full w-full flex items-center justify-center">
             <MapPin className="h-4 w-4 text-muted-foreground" />

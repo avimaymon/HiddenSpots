@@ -119,7 +119,15 @@ function LocationCardInner({ location, view, onClick }: Props) {
           <Link href={`/locations/${location.id}`} onClick={onClick} className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
             <div className="relative h-14 w-14 sm:h-16 sm:w-16 rounded-xl overflow-hidden shrink-0 bg-muted ring-1 ring-border/40">
               {photo ? (
-                <Image src={photo.url} alt={location.title} fill className="object-cover" />
+                <Image
+                  src={photo.url}
+                  alt={location.title}
+                  fill
+                  // Matches h-14 w-14 sm:h-16 sm:w-16. Without `sizes`, Next
+                  // assumes 100vw and serves a 640px+ asset for a 56px thumb.
+                  sizes="(min-width: 640px) 64px, 56px"
+                  className="object-cover"
+                />
               ) : (
                 <div className="h-full w-full flex items-center justify-center gradient-nature">
                   <MapPin className="h-5 w-5 text-primary/60" />
@@ -179,6 +187,8 @@ function LocationCardInner({ location, view, onClick }: Props) {
                 src={photo.url}
                 alt={location.title}
                 fill
+                // Card image in a 1/2/3/4-column grid (xs / lg / xl).
+                sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 480px) 50vw, 100vw"
                 className="object-cover transition-transform duration-700 ease-out group-hover:scale-110"
               />
             ) : (
