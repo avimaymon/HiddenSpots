@@ -43,17 +43,50 @@ describe("rewritePayloadTempIds", () => {
 });
 
 describe("shouldDeferRetry", () => {
-  it("does not defer fresh items", () => {
-    expect(shouldDeferRetry(0, new Date().toISOString())).toBe(false);
+  const now = new Date("2026-08-05T12:00:00Z").getTime();
+
+  it("returns false with zero retries", () => {
+    expect(shouldDeferRetry(0, "2026-08-05T11:59:00Z", now)).toBe(false);
   });
 
-  it("defers recent failures", () => {
-    const createdAt = new Date(Date.now() - 1000).toISOString();
-    expect(shouldDeferRetry(1, createdAt, Date.now())).toBe(true);
+  it("returns false with no lastAttemptAt", () => {
+    expect(shouldDeferRetry(3, undefined, now)).toBe(false);
+    expect(shouldDeferRetry(3, null, now)).toBe(false);
   });
 
-  it("allows retry after backoff window", () => {
-    const createdAt = new Date(Date.now() - 60_000).toISOString();
-    expect(shouldDeferRetry(1, createdAt, Date.now())).toBe(false);
+  it("returns false when the backoff window has passed", () => {
+    // 3 retries: 3 * 2^3 = 24 seconds
+    const tenMinutesAgo = new Date(now - 600_000).toISOString();
+    expect(shouldDeferRetry(3, tenMinutesAgo, now)).toBe(false);
+  });
+
+  it("returns true when inside the backoff window", () => {
+    // 2 retries: 3 * 2^2 = 12 seconds
+    const oneSecondAgo = new Date(now - 1000).toISOString();
+    expect(shouldDeferRetry(2, oneSecondAgo, now)).toBe(true);
+  });
+
+  it("applies exponential backoff correctly", () => {
+    const oneSecondAgo = new Date(now - 1000).toISOString();
+    // Retry 1: 3s — should defer
+    expect(shouldDeferRetry(1, oneSecondAgo, now)).toBe(true);
+    // Retry 2: 6s — should defer (only 1s passed)
+    expect(shouldDeferRetry(2, oneSecondAgo, now)).toBe(true);
+    // Retry 3: 12s — should defer (only 1s passed)
+    expect(shouldDeferRetry(3, oneSecondAgo, now)).toBe(true);
+    // Retry 7: 300s — should defer (only 1s passed)
+    expect(shouldDeferRetry(7, oneSecondAgo, now)).toBe(true);
+  });
+
+  it("caps the backoff at 5 minutes", () => {
+    const fiveMinutesAgo = new Date(now - 300_000).toISOString();
+    // Retries 7+ all cap at 300s
+    expect(shouldDeferRetry(7, fiveMinutesAgo, now)).toBe(false);
+    expect(shouldDeferRetry(8, fiveMinutesAgo, now)).toBe(false);
+  });
+
+  it("rejects invalid timestamps", () => {
+    expect(shouldDeferRetry(3, "not a date", now)).toBe(false);
+    expect(shouldDeferRetry(3, "", now)).toBe(false);
   });
 });
