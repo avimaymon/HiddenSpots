@@ -14,6 +14,7 @@ import {
 import { writeNotification } from "@/lib/notifications/write";
 import { applyPrivacy } from "@/lib/shares/apply-privacy";
 import { deriveShareFuzzSeed } from "@/lib/shares/fuzz-seed";
+import { newShareToken } from "@/lib/shares/token";
 import type { Permission } from "@prisma/client";
 import { headers } from "next/headers";
 
@@ -58,6 +59,7 @@ export async function createShare(data: unknown) {
       sharedById: userId,
       sharedWithId,
       permission,
+      publicToken: newShareToken(),
       locationId: validated.locationId,
       collectionId: validated.collectionId,
       tripId: validated.tripId,
@@ -171,4 +173,29 @@ export async function revokeShare(shareId: string) {
     where: { id: shareId, sharedById: userId },
   });
   revalidateAppPaths("/locations", "/settings");
+}
+
+/**
+ * Issue a fresh token for an existing share, invalidating the old link.
+ *
+ * Shares created before tokens moved to randomBytes still carry a `cuid()`.
+ * Those links keep working — silently 404ing a link someone already sent over
+ * WhatsApp is worse than the residual risk — so rotation is the owner's call,
+ * except for SECRET spots which are rotated once by
+ * `scripts/rotate-secret-tokens.mjs`.
+ */
+export async function rotateShareToken(shareId: string) {
+  const userId = await requireAuth();
+  const { ok } = await rateLimit(`share-rotate:${userId}`, 20, 60_000, {
+    failClosed: true,
+  });
+  if (!ok) throw new Error("RATE_LIMITED");
+
+  const updated = await prisma.share.update({
+    where: { id: shareId, sharedById: userId },
+    data: { publicToken: newShareToken() },
+    select: { id: true, publicToken: true },
+  });
+  revalidateAppPaths("/locations", "/settings");
+  return updated;
 }

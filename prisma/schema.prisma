@@ -96,8 +96,10 @@ model User {
   notifications Notification[]
   following     Follow[]        @relation("Follower")
   followers     Follow[]        @relation("Following")
-  comments      Comment[]
-  spotReports   SpotReport[]
+  comments        Comment[]
+  spotReports     SpotReport[]
+  tracks          Track[]
+  locationHistory LocationHistory[]
   feedback      Feedback[]
 
   createdAt DateTime @default(now())
@@ -195,6 +197,9 @@ model Location {
   @@index([userId, isFavorite])
   @@index([userId, isBucketList])
   @@index([userId, categoryId])
+  // Matches the atlas keyset page ORDER BY [updatedAt desc, id desc] exactly,
+  // including the tiebreak — an ascending index cannot serve it.
+  @@index([userId, updatedAt(sort: Desc), id(sort: Desc)])
 }
 
 model LocationPhoto {
@@ -388,7 +393,9 @@ model TripLocation {
   tripId     String
   trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
   locationId String
-  location   Location @relation(fields: [locationId], references: [id])
+  // A stop cannot outlive its spot. Without Cascade this RESTRICTs, breaking
+  // both permanentlyDeleteLocation and account deletion.
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   sortOrder  Int      @default(0)
   notes      String?
   stayDuration  Int?
@@ -406,7 +413,9 @@ model TripLocation {
 model Share {
   id           String     @id @default(cuid())
   sharedById   String
-  sharedBy     User       @relation("SharedBy", fields: [sharedById], references: [id])
+  // Cascade: without it Postgres RESTRICTs and account deletion fails outright
+  // for anyone who has ever created a share.
+  sharedBy     User       @relation("SharedBy", fields: [sharedById], references: [id], onDelete: Cascade)
   sharedWithId String?
   sharedWith   User?      @relation("SharedWith", fields: [sharedWithId], references: [id])
 
@@ -418,7 +427,9 @@ model Share {
   trip         Trip?       @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   permission  Permission   @default(VIEW)
-  publicToken String?      @unique @default(cuid())
+  // No DB default: cuid() is timestamped and counter-based, and this token is
+  // the only gate on a shared spot. Generated in app code via lib/shares/token.
+  publicToken String?      @unique
   expiresAt   DateTime?
   viewCount   Int          @default(0)
 
@@ -426,6 +437,10 @@ model Share {
 
   @@index([sharedById])
   @@index([publicToken])
+  // Permission checks look shares up by resource on every comment/edit.
+  @@index([locationId])
+  @@index([collectionId])
+  @@index([tripId])
 }
 
 // ─────────────────────────────────────────────
@@ -437,6 +452,9 @@ model LocationHistory {
   locationId String
   location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   userId     String
+  // Real FK: snapshots carry privateNotes for owner edits, so they must not
+  // survive the account they belong to.
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   snapshot   Json
   createdAt  DateTime @default(now())
 
@@ -537,6 +555,8 @@ model Follow {
 model Track {
   id         String   @id @default(cuid())
   userId     String
+  // Real FK: this was a bare String, so GPS traces outlived deleted accounts.
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   locationId String?
   location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
   name       String?
@@ -547,6 +567,7 @@ model Track {
   createdAt  DateTime @default(now())
 
   @@index([userId])
+  @@index([locationId])
 }
 
 // ─────────────────────────────────────────────

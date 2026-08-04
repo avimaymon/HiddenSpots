@@ -8,3 +8,10 @@ export const EXPORT_TRACKS_MAX = 500;
 
 /** Cap near-dupe scans during import / Drive restore (false-negatives beyond cap). */
 export const DUPE_SCAN_MAX = 5_000;
+
+/**
+ * Blob keys collected per photo table before an account delete. Beyond this the
+ * remainder is reported as orphaned rather than silently dropped — the account
+ * still deletes, which is the part the user is entitled to.
+ */
+export const DELETE_ACCOUNT_BLOBS_MAX = 5_000;

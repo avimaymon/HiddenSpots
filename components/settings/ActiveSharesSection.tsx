@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { listMyShares, revokeShare } from "@/lib/actions/shares";
+import { listMyShares, revokeShare, rotateShareToken } from "@/lib/actions/shares";
 import { Button } from "@/components/ui/button";
-import { Loader2, Link2, Trash2 } from "lucide-react";
+import { Loader2, Link2, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 type ShareRow = Awaited<ReturnType<typeof listMyShares>>[number];
@@ -35,6 +35,20 @@ export function ActiveSharesSection() {
     try {
       await revokeShare(id);
       toast({ title: t("revoked"), variant: "success" });
+      setShares(await listMyShares());
+    } catch (e) {
+      toast({ title: String(e), variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRotate(id: string) {
+    if (!confirm(t("rotateConfirm"))) return;
+    setBusy(id);
+    try {
+      await rotateShareToken(id);
+      toast({ title: t("rotated"), variant: "success" });
       setShares(await listMyShares());
     } catch (e) {
       toast({ title: String(e), variant: "destructive" });
@@ -77,6 +91,16 @@ export function ActiveSharesSection() {
                     {s.expiresAt ? ` · ${new Date(s.expiresAt).toLocaleDateString()}` : ""}
                   </p>
                 </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="rounded-xl"
+                  disabled={busy === s.id}
+                  onClick={() => handleRotate(s.id)}
+                  title={t("rotateHint")}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> {t("rotateShare")}
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"

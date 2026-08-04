@@ -3,7 +3,9 @@
 import { revalidateAppPaths } from "@/lib/revalidate";
 import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
+import { del } from "@vercel/blob";
 import {
+  DELETE_ACCOUNT_BLOBS_MAX,
   EXPORT_COLLECTIONS_MAX,
   EXPORT_LOCATIONS_MAX,
   EXPORT_SHARES_MAX,
@@ -214,7 +216,46 @@ export async function deleteAccount(confirmEmail: string) {
     throw new Error("Email confirmation does not match");
   }
   const userId = session.user.id;
+
+  // Blob objects are the one thing the DB cascade cannot reach: deleting the
+  // photo rows orphans the uploads forever. Collect the keys first — after the
+  // cascade there is nothing left to enumerate them from.
+  const [locationPhotos, visitPhotos] = await Promise.all([
+    prisma.locationPhoto.findMany({
+      where: { location: { userId }, blobKey: { not: null } },
+      select: { blobKey: true },
+      take: DELETE_ACCOUNT_BLOBS_MAX,
+    }),
+    prisma.visitPhoto.findMany({
+      where: { visit: { userId }, blobKey: { not: null } },
+      select: { blobKey: true },
+      take: DELETE_ACCOUNT_BLOBS_MAX,
+    }),
+  ]);
+  const blobKeys = [...locationPhotos, ...visitPhotos]
+    .map((p) => p.blobKey)
+    .filter((k): k is string => Boolean(k));
+
   // Cascade-delete via Prisma (schema has onDelete: Cascade on userId FKs)
   await prisma.user.delete({ where: { id: userId } });
-  return { deleted: true };
+
+  // Best-effort: the account is already gone, and a storage hiccup must not
+  // turn a completed deletion into an error the user sees.
+  let blobsDeleted = 0;
+  if (blobKeys.length) {
+    try {
+      await del(blobKeys);
+      blobsDeleted = blobKeys.length;
+    } catch (e) {
+      console.error(
+        JSON.stringify({
+          tag: "delete-account.blob-cleanup-failed",
+          count: blobKeys.length,
+          message: e instanceof Error ? e.message : "unknown",
+        })
+      );
+    }
+  }
+
+  return { deleted: true, blobsDeleted, blobsOrphaned: blobKeys.length - blobsDeleted };
 }
