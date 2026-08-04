@@ -13,11 +13,20 @@ export interface MapLocation {
   visitCount?: number;
 }
 
+export type MapBounds = {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+};
+
 export interface MapViewProps {
   locations: MapLocation[];
   selectedId?: string | null;
   onLocationClick: (id: string) => void;
   onMapClick?: (coords: { lat: number; lng: number }) => void;
+  /** Real provider viewport bounds (prefer over heuristic bboxFromViewState). */
+  onBoundsChange?: (bounds: MapBounds) => void;
   isAddingLocation?: boolean;
   measureMode?: boolean;
   measurePoints?: { lat: number; lng: number }[];
@@ -34,24 +43,25 @@ export interface MapViewProps {
   geojsonOverlay?: GeoJSON.FeatureCollection | null;
 }
 
+/** labelKey maps to messages map.styles.* */
 export const MAP_STYLES = {
   mapbox: [
-    { id: "outdoors-v12", label: "Outdoors", icon: "🗺️" },
-    { id: "streets-v12", label: "Streets", icon: "🏙️" },
-    { id: "satellite-streets-v12", label: "Satellite", icon: "🛰️" },
-    { id: "light-v11", label: "Light", icon: "☀️" },
-    { id: "dark-v11", label: "Dark", icon: "🌙" },
+    { id: "outdoors-v12", labelKey: "outdoors", icon: "🗺️" },
+    { id: "streets-v12", labelKey: "streets", icon: "🏙️" },
+    { id: "satellite-streets-v12", labelKey: "satellite", icon: "🛰️" },
+    { id: "light-v11", labelKey: "light", icon: "☀️" },
+    { id: "dark-v11", labelKey: "dark", icon: "🌙" },
   ],
   google: [
-    { id: "roadmap", label: "Roadmap", icon: "🗺️" },
-    { id: "satellite", label: "Satellite", icon: "🛰️" },
-    { id: "hybrid", label: "Hybrid", icon: "🌐" },
-    { id: "terrain", label: "Terrain", icon: "⛰️" },
+    { id: "roadmap", labelKey: "roadmap", icon: "🗺️" },
+    { id: "satellite", labelKey: "satellite", icon: "🛰️" },
+    { id: "hybrid", labelKey: "hybrid", icon: "🌐" },
+    { id: "terrain", labelKey: "terrain", icon: "⛰️" },
   ],
   leaflet: [
-    { id: "osm", label: "OpenStreetMap", icon: "🗺️" },
-    { id: "topo", label: "Topographic", icon: "⛰️" },
-    { id: "satellite", label: "Satellite", icon: "🛰️" },
+    { id: "osm", labelKey: "osm", icon: "🗺️" },
+    { id: "topo", labelKey: "topo", icon: "⛰️" },
+    { id: "satellite", labelKey: "satellite", icon: "🛰️" },
   ],
 } as const;
 

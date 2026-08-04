@@ -17,18 +17,13 @@ export function LandingHero() {
 
       <header className="relative z-20 flex items-center justify-between px-4 sm:px-8 py-4">
         <AppLogo size="sm" />
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" className="rounded-xl glass" asChild>
-            <Link href="/signin">{t("signIn")}</Link>
-          </Button>
-          <Button size="sm" className="rounded-xl shadow-float" asChild>
-            <Link href="/signup">{t("getStarted")}</Link>
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" className="rounded-xl glass" asChild>
+          <Link href="/signin">{t("signIn")}</Link>
+        </Button>
       </header>
 
       <main id="main-content" className="relative z-10 flex-1 flex flex-col justify-center px-4 sm:px-8 pb-16">
-        <div className="max-w-3xl mx-auto w-full text-center space-y-7 sm:space-y-9">
+        <div className="max-w-3xl mx-auto w-full text-center space-y-6 sm:space-y-8">
           <FadeIn delay={0.05}>
             <p className="font-display text-6xl sm:text-7xl md:text-8xl font-extrabold tracking-tight leading-none">
               <span className="text-gradient">HiddenSpots</span>
@@ -47,18 +42,27 @@ export function LandingHero() {
             </p>
           </FadeIn>
 
-          <FadeIn delay={0.38} y={14}>
-            <div className="flex flex-wrap justify-center gap-3 pt-1">
+          <FadeIn delay={0.34} y={12}>
+            <p className="text-sm text-foreground/70 max-w-md mx-auto leading-snug">
+              {t("landingProof")}
+            </p>
+          </FadeIn>
+
+          <FadeIn delay={0.4} y={14}>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
               <Button
                 size="lg"
-                className="rounded-2xl h-12 px-8 shadow-float fab-nature border-0 text-primary-foreground"
+                className="rounded-2xl h-12 px-10 shadow-float fab-nature border-0 text-primary-foreground w-full sm:w-auto"
                 asChild
               >
                 <Link href="/signup">{t("getStarted")}</Link>
               </Button>
-              <Button size="lg" variant="outline" className="rounded-2xl h-12 px-8 glass-strong" asChild>
-                <Link href="/signin">{t("signIn")}</Link>
-              </Button>
+              <Link
+                href="/signin"
+                className="text-sm text-muted-foreground underline-offset-4 hover:underline hover:text-foreground"
+              >
+                {t("signIn")}
+              </Link>
             </div>
           </FadeIn>
         </div>

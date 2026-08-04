@@ -13,7 +13,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind 4 · Prisma / PostgreSQL · Nex
 ```bash
 npm ci
 cp .env.example .env.local   # fill in DATABASE_URL, AUTH_SECRET, etc.
-npm run db:push
+npm run db:migrate          # local: prisma migrate dev (or db:push for throwaway DBs)
 npm run dev
 ```
 
@@ -25,11 +25,14 @@ Open [http://localhost:3000/he/app](http://localhost:3000/he/app).
 |---------|---------|
 | `npm run dev` | Local development |
 | `npm run build` | `prisma generate` + `next build` |
-| `npm run build:deploy` | Generate + `db push` + build (Vercel) |
-| `npm run db:push` | Push Prisma schema to the database |
+| `npm run build:deploy` | Generate + `migrate deploy` + build (Vercel) |
+| `npm run db:migrate` | Create/apply migrations locally |
+| `npm run db:migrate:deploy` | Apply migrations (production) |
+| `npm run db:push` | Push schema without migration history (dev only) |
 | `npm run db:studio` | Prisma Studio |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest |
+| `npm run check:i18n` | Hebrew/English message key parity |
 | `npm run test:e2e` | Playwright smoke tests |
 
 ## Environment

@@ -3,6 +3,8 @@
  * Receives the Google OAuth code, exchanges it for tokens,
  * and stores them in the Account table for the current user.
  */
+import { auth } from "@/lib/auth/config";
+import { verifyDriveOAuthState } from "@/lib/auth/oauth-state";
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -10,26 +12,54 @@ function baseUrl(req: NextRequest): string {
   return process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? req.nextUrl.origin;
 }
 
+async function settingsRedirect(
+  base: string,
+  userId: string | undefined,
+  drive: "connected" | "error"
+): Promise<NextResponse> {
+  let locale: "he" | "en" = "he";
+  if (userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { locale: true },
+    });
+    if (user?.locale === "en") locale = "en";
+  }
+  return NextResponse.redirect(`${base}/${locale}/settings?drive=${drive}`);
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const code = searchParams.get("code");
-  const userId = searchParams.get("state");
+  const stateRaw = searchParams.get("state");
   const error = searchParams.get("error");
 
   const base = baseUrl(req);
-  const settingsUrl = `${base}/settings`;
+  const session = await auth();
+  const sessionUserId = session?.user?.id;
 
-  if (error || !code || !userId) {
-    return NextResponse.redirect(`${settingsUrl}?drive=error`);
+  if (error || !code || !stateRaw) {
+    return settingsRedirect(base, sessionUserId, "error");
   }
+
+  const verified = verifyDriveOAuthState(stateRaw);
+  if (!verified) {
+    return settingsRedirect(base, sessionUserId, "error");
+  }
+
+  // Bind to the signed-in session — never trust state alone
+  if (!sessionUserId || sessionUserId !== verified.userId) {
+    return settingsRedirect(base, sessionUserId, "error");
+  }
+
+  const userId = verified.userId;
 
   const clientId = process.env.AUTH_GOOGLE_ID;
   const clientSecret = process.env.AUTH_GOOGLE_SECRET;
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(`${settingsUrl}?drive=error`);
+    return settingsRedirect(base, userId, "error");
   }
 
-  // Exchange code for tokens
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -43,29 +73,38 @@ export async function GET(req: NextRequest) {
   });
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(`${settingsUrl}?drive=error`);
+    return settingsRedirect(base, userId, "error");
   }
 
-  const tokens = await tokenRes.json() as {
+  const tokens = (await tokenRes.json()) as {
     access_token: string;
     refresh_token?: string;
     expires_in: number;
     id_token?: string;
   };
 
-  // Get Google account ID from userinfo
   const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   });
   if (!userInfoRes.ok) {
-    return NextResponse.redirect(`${settingsUrl}?drive=error`);
+    return settingsRedirect(base, userId, "error");
   }
-  const userInfo = await userInfoRes.json() as { sub: string };
+  const userInfo = (await userInfoRes.json()) as { sub: string };
   const providerAccountId = userInfo.sub;
+
+  // Reject linking a Google account already owned by someone else
+  const existing = await prisma.account.findUnique({
+    where: {
+      provider_providerAccountId: { provider: "google", providerAccountId },
+    },
+    select: { userId: true },
+  });
+  if (existing && existing.userId !== userId) {
+    return settingsRedirect(base, userId, "error");
+  }
 
   const expiresAt = Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 3600);
 
-  // Upsert the Google Account row for this user
   await prisma.account.upsert({
     where: { provider_providerAccountId: { provider: "google", providerAccountId } },
     create: {
@@ -80,6 +119,7 @@ export async function GET(req: NextRequest) {
       token_type: "Bearer",
     },
     update: {
+      // Never change userId on update — only refresh tokens for the same owner
       access_token: tokens.access_token,
       ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
       expires_at: expiresAt,
@@ -87,5 +127,5 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  return NextResponse.redirect(`${settingsUrl}?drive=connected`);
+  return settingsRedirect(base, userId, "connected");
 }

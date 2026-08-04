@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { Car } from "lucide-react";
+import { formatDistance } from "@/lib/utils";
 
 interface ParkingResult {
   name?: string;
@@ -19,7 +21,8 @@ async function fetchNearestParking(lat: number, lon: number): Promise<ParkingRes
     const data = (await res.json()) as { elements: { lat: number; lon: number; tags?: { name?: string } }[] };
     const el = data.elements[0];
     if (!el) return null;
-    const dLat = el.lat - lat, dLon = el.lon - lon;
+    const dLat = el.lat - lat;
+    const dLon = el.lon - lon;
     const km = Math.sqrt(dLat * dLat + dLon * dLon) * 111;
     return { name: el.tags?.name, distance: Math.round(km * 1000), lat: el.lat, lon: el.lon };
   } catch {
@@ -28,6 +31,8 @@ async function fetchNearestParking(lat: number, lon: number): Promise<ParkingRes
 }
 
 export function NearestParking({ latitude, longitude }: { latitude: number; longitude: number }) {
+  const t = useTranslations("locations");
+  const locale = useLocale();
   const [parking, setParking] = useState<ParkingResult | null | "loading">("loading");
 
   useEffect(() => {
@@ -40,8 +45,10 @@ export function NearestParking({ latitude, longitude }: { latitude: number; long
     <div className="flex items-center gap-2 text-sm text-muted-foreground">
       <Car className="h-4 w-4 shrink-0 text-primary" />
       <span>
-        {parking.name ? `${parking.name} ` : "Parking "}
-        <span className="font-medium text-foreground">{parking.distance}m away</span>
+        {parking.name ? `${parking.name} ` : `${t("parkingFallback")} `}
+        <span className="font-medium text-foreground">
+          {t("parkingAway", { distance: formatDistance(parking.distance, locale) })}
+        </span>
       </span>
       <a
         href={`https://www.google.com/maps/dir/?api=1&destination=${parking.lat},${parking.lon}`}
@@ -49,7 +56,7 @@ export function NearestParking({ latitude, longitude }: { latitude: number; long
         rel="noopener noreferrer"
         className="text-primary text-xs hover:underline"
       >
-        Directions
+        {t("parkingDirections")}
       </a>
     </div>
   );

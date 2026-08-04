@@ -67,7 +67,13 @@ export function ActiveSharesSection() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{label}</p>
                   <p className="text-xs text-muted-foreground">
-                    {s.viewCount} · {s.permission}
+                    {t("viewCount", { count: s.viewCount })}
+                    {" · "}
+                    {s.permission === "COMMENT"
+                      ? t("permComment")
+                      : s.permission === "EDIT" || s.permission === "MANAGE"
+                        ? t("permEdit")
+                        : t("permView")}
                     {s.expiresAt ? ` · ${new Date(s.expiresAt).toLocaleDateString()}` : ""}
                   </p>
                 </div>

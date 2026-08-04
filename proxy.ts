@@ -44,7 +44,8 @@ export default async function proxy(req: NextRequest) {
     path.startsWith("/dashboard") ||
     path.startsWith("/settings") ||
     path.startsWith("/visits") ||
-    path.startsWith("/import");
+    path.startsWith("/import") ||
+    path.startsWith("/year-review");
 
   const sessionToken =
     req.cookies.get("authjs.session-token")?.value ||

@@ -1,34 +1,55 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { useSearchParams } from "next/navigation";
 import { MapView } from "@/components/map/MapView";
 import { LocationDetailPanel } from "@/components/map/shared/LocationDetailPanel";
 import { AddLocationDialog } from "@/components/locations/AddLocationDialog";
-import { createLocation } from "@/lib/actions/locations";
-type CreatedLocation = Awaited<ReturnType<typeof createLocation>>;
+import type { LocationCreatedPayload } from "@/components/locations/AddLocationDialog";
 import { MapSidebar } from "@/components/map/MapSidebar";
 import { useMapStore } from "@/lib/store/map";
 import type { MapLocation } from "@/lib/map/types";
-import { Plus, Layers, X, LocateFixed, Search, Ruler, CircleDot, Flame, CheckCircle2 } from "lucide-react";
+import { Plus, Layers, X, LocateFixed, Search, Ruler, CircleDot, Flame, CheckCircle2, Route, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { useTranslations } from "next-intl";
+import { useTheme } from "next-themes";
+import { useSettingsStore } from "@/lib/store/settings";
 import { MapChipBar } from "@/components/mobile/MapChipBar";
 import { MobileLocationSheet } from "@/components/mobile/MobileLocationSheet";
 import { MobileSearchScreen } from "@/components/mobile/MobileSearchScreen";
 import { QuickAddSheet } from "@/components/map/shared/QuickAddSheet";
 import { CreateFromPhotoButton } from "@/components/map/shared/CreateFromPhotoButton";
-import { cacheLocationsForOffline } from "@/lib/offline/db";
+import {
+  cacheLocationsForOffline,
+  enqueueSync,
+  getOfflineLocations,
+} from "@/lib/offline/db";
+import {
+  COLLECTIONS_CACHE_KEY,
+  ID_REMAP_EVENT,
+  type IdRemapDetail,
+  writeEntityCache,
+} from "@/lib/offline/entity-cache";
 import { distance as turfDistance } from "@turf/turf";
 import { toast } from "@/hooks/use-toast";
 import { createVisit } from "@/lib/actions/visits";
+import { track } from "@/lib/analytics";
+import { fetchCollectionMemberships, fetchMapLocationsInBounds } from "@/lib/actions/map";
+import { bboxFromViewState } from "@/lib/map/viewport";
+import type { MapBounds } from "@/lib/map/types";
+import { pickCheckinTarget } from "@/lib/geo/checkin";
+import { formatDistance } from "@/lib/utils";
 import { haptic } from "@/lib/haptic";
 import { useDir } from "@/hooks/use-dir";
+import { useLocale } from "next-intl";
 import { GeoJsonOverlayButton } from "@/components/map/shared/GeoJsonOverlay";
 import { GpxRecorder } from "@/components/map/shared/GpxRecorder";
+import { TracksSheet } from "@/components/map/shared/TracksSheet";
+
+const CHECKIN_MAX_M = 200;
 
 const RADIUS_KM_OPTIONS = [5, 10, 25] as const;
 
@@ -39,6 +60,7 @@ type LocationRow = {
   longitude: number;
   isFavorite: boolean;
   isVisited: boolean;
+  visitCount?: number;
   coverPhotoUrl: string | null;
   categoryId: string | null;
   category: { color: string; icon: string; name: string } | null;
@@ -50,9 +72,18 @@ interface Props {
   collections: { id: string; name: string; color: string; _count: { locations: number } }[];
   categories: { id: string; name: string; color: string; icon: string }[];
   collectionMembers: { collectionId: string; locationId: string }[];
+  atlasTruncated?: boolean;
+  atlasTotalCount?: number;
 }
 
-export function MapClientPage({ initialLocations, collections, categories, collectionMembers }: Props) {
+export function MapClientPage({
+  initialLocations,
+  collections,
+  categories,
+  collectionMembers,
+  atlasTruncated = false,
+  atlasTotalCount,
+}: Props) {
   const searchParams = useSearchParams();
   const {
     selectedLocationId,
@@ -72,7 +103,11 @@ export function MapClientPage({ initialLocations, collections, categories, colle
     useGeolocation(false);
 
   const t = useTranslations("map");
+  const locale = useLocale();
   const dir = useDir();
+  const { setTheme } = useTheme();
+  const trailDay = useSettingsStore((s) => s.trailDay);
+  const setTrailDay = useSettingsStore((s) => s.setTrailDay);
   const panelX = dir === "rtl" ? "-100%" : "100%";
   const [showSidebar, setShowSidebar] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -89,6 +124,62 @@ export function MapClientPage({ initialLocations, collections, categories, colle
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [geojsonOverlay, setGeojsonOverlay] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [tracksOpen, setTracksOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [showTruncationHint, setShowTruncationHint] = useState(atlasTruncated);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
+  const [fetchedMembers, setFetchedMembers] = useState(collectionMembers);
+  /** Key of last successful membership fetch — avoids empty-marker flash while loading. */
+  const [membersReadyKey, setMembersReadyKey] = useState(() =>
+    collectionMembers.length
+      ? [...new Set(collectionMembers.map((m) => m.collectionId))].sort().join(",")
+      : ""
+  );
+  const [activeTrack, setActiveTrack] = useState<{
+    id: string;
+    points: { lat: number; lng: number }[];
+  } | null>(null);
+
+  const mapLat = viewState.latitude;
+  const mapLng = viewState.longitude;
+  const mapZoom = viewState.zoom;
+
+  // Seed collection list for offline "add to collection" dialog.
+  useEffect(() => {
+    writeEntityCache(
+      COLLECTIONS_CACHE_KEY,
+      collections.map((c) => ({
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        _count: { locations: c._count.locations },
+      }))
+    );
+  }, [collections]);
+
+  // Fill atlas gaps when panning beyond the initial favorites-first cap.
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    const handle = window.setTimeout(() => {
+      // Prefer real provider bounds; heuristic only until first moveend.
+      const bounds =
+        mapBounds ??
+        bboxFromViewState({ latitude: mapLat, longitude: mapLng, zoom: mapZoom });
+      void fetchMapLocationsInBounds(bounds)
+        .then((rows) => {
+          if (!rows.length) return;
+          setLocations((prev) => {
+            const byId = new Map(prev.map((l) => [l.id, l]));
+            for (const row of rows) byId.set(row.id, row);
+            return [...byId.values()];
+          });
+        })
+        .catch(() => {
+          /* offline / unauthorized — keep seed markers */
+        });
+    }, 450);
+    return () => window.clearTimeout(handle);
+  }, [mapLat, mapLng, mapZoom, mapBounds]);
 
   async function handleQuickCheckin() {
     setCheckingIn(true);
@@ -97,18 +188,46 @@ export function MapClientPage({ initialLocations, collections, categories, colle
         navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 12000 })
       );
       const { latitude: lat, longitude: lng } = pos.coords;
-      const nearest = locations.reduce<typeof locations[0] | null>((best, loc) => {
-        const km = turfDistance([lng, lat], [loc.longitude, loc.latitude], { units: "kilometers" });
-        if (!best) return loc;
-        const bestKm = turfDistance([lng, lat], [best.longitude, best.latitude], { units: "kilometers" });
-        return km < bestKm ? loc : best;
-      }, null);
-      if (!nearest) { toast({ title: "No spots found", variant: "destructive" }); return; }
-      await createVisit({ locationId: nearest.id, visitedAt: new Date().toISOString() });
-      toast({ title: `✓ Checked in at ${nearest.title}`, variant: "success" });
+      const pick = pickCheckinTarget(locations, lat, lng, CHECKIN_MAX_M);
+      if (!pick.ok) {
+        if (pick.reason === "no_spots") {
+          toast({ title: t("checkinNoSpots"), variant: "destructive" });
+        } else {
+          const distLabel = formatDistance(pick.distanceM ?? 0, locale);
+          toast({
+            title: t("checkinTooFar", {
+              title: pick.nearest?.title ?? "",
+              distance: distLabel,
+            }),
+            variant: "destructive",
+          });
+          if (pick.nearest) setSelectedLocation(pick.nearest.id);
+        }
+        return;
+      }
+      const distLabel = formatDistance(pick.distanceM, locale);
+      const ok = window.confirm(
+        t("checkinConfirm", { title: pick.location.title, distance: distLabel })
+      );
+      if (!ok) return;
+
+      const payload = { locationId: pick.location.id, visitedAt: new Date().toISOString() };
+      if (!navigator.onLine) {
+        await enqueueSync("visit", payload);
+        track("visit", { method: "checkin", offline: true });
+        toast({
+          title: t("checkinSuccess", { title: pick.location.title }),
+          description: t("checkinOffline"),
+          variant: "success",
+        });
+      } else {
+        await createVisit(payload);
+        track("visit", { method: "checkin", offline: false });
+        toast({ title: t("checkinSuccess", { title: pick.location.title }), variant: "success" });
+      }
       haptic([50, 30, 50]);
     } catch {
-      toast({ title: "Could not get location", variant: "destructive" });
+      toast({ title: t("couldNotGetLocation"), variant: "destructive" });
     } finally {
       setCheckingIn(false);
     }
@@ -131,14 +250,140 @@ export function MapClientPage({ initialLocations, collections, categories, colle
     cacheLocationsForOffline(locations);
   }, [locations]);
 
+  // Airplane mode: merge Dexie atlas pack so favorites survive without viewport fill.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || navigator.onLine) return;
+    let cancelled = false;
+    void getOfflineLocations().then((cached) => {
+      if (cancelled || !cached.length) return;
+      setLocations((prev) => {
+        const ids = new Set(prev.map((p) => p.id));
+        const extras = cached
+          .filter((c) => !ids.has(c.id))
+          .map((c) => ({
+            id: c.id,
+            title: c.title,
+            latitude: c.latitude,
+            longitude: c.longitude,
+            isFavorite: c.isFavorite,
+            isVisited: c.isVisited,
+            coverPhotoUrl: c.coverPhotoUrl,
+            categoryId: null as string | null,
+            category: {
+              color: c.categoryColor,
+              icon: c.categoryIcon,
+              name: "",
+            },
+            photos: c.coverPhotoUrl ? [{ url: c.coverPhotoUrl }] : [],
+          }));
+        return extras.length ? [...prev, ...extras] : prev;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // After offline create syncs, rewrite optimistic client ids → server ids.
+  useEffect(() => {
+    function onRemap(e: Event) {
+      const { clientId, serverId } = (e as CustomEvent<IdRemapDetail>).detail;
+      setLocations((prev) =>
+        prev.map((l) => (l.id === clientId ? { ...l, id: serverId } : l))
+      );
+      if (useMapStore.getState().selectedLocationId === clientId) {
+        setSelectedLocation(serverId);
+      }
+    }
+    window.addEventListener(ID_REMAP_EVENT, onRemap);
+    return () => window.removeEventListener(ID_REMAP_EVENT, onRemap);
+  }, [setSelectedLocation]);
+
+  function toggleTrailDay() {
+    const next = !trailDay;
+    setTrailDay(next);
+    if (next) {
+      setTheme("sun");
+      setNearbyOnly(true);
+      setShowHeatmap(false);
+      setMeasureMode(false);
+      setRadiusActive(false);
+      setToolsOpen(false);
+    }
+    track("trail_day_toggle", { on: next });
+  }
+
+  // Trail Day: keep the screen awake while the map is visible.
+  useEffect(() => {
+    if (!trailDay || typeof navigator === "undefined" || !("wakeLock" in navigator)) {
+      return;
+    }
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+
+    async function acquire() {
+      try {
+        const lock = await navigator.wakeLock.request("screen");
+        if (cancelled) {
+          void lock.release();
+          return;
+        }
+        sentinel = lock;
+      } catch {
+        /* unsupported / denied — fine */
+      }
+    }
+
+    void acquire();
+    const onVis = () => {
+      if (document.visibilityState === "visible") void acquire();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      void sentinel?.release();
+      sentinel = null;
+    };
+  }, [trailDay]);
+
+  const membersKey = [...activeCollectionIds].sort().join(",");
+  const membershipsLoading =
+    activeCollectionIds.length > 0 && membersReadyKey !== membersKey;
+
+  // Lazy-load memberships only for active collection filters.
+  useEffect(() => {
+    if (activeCollectionIds.length === 0) return;
+    const key = [...activeCollectionIds].sort().join(",");
+    let cancelled = false;
+    void fetchCollectionMemberships(activeCollectionIds)
+      .then((rows) => {
+        if (cancelled) return;
+        setFetchedMembers(rows);
+        setMembersReadyKey(key);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFetchedMembers([]);
+        setMembersReadyKey(key);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCollectionIds]);
+
+  const members = useMemo(() => {
+    if (activeCollectionIds.length === 0) return [];
+    return fetchedMembers.filter((m) => activeCollectionIds.includes(m.collectionId));
+  }, [activeCollectionIds, fetchedMembers]);
+
   const filteredLocations = useMemo(() => {
     let result = locations;
-    if (activeCollectionIds.length > 0) {
+    // While memberships load, skip the empty Set filter (keeps markers visible).
+    if (activeCollectionIds.length > 0 && !membershipsLoading) {
       const allowed = new Set<string>();
-      for (const m of collectionMembers) {
-        if (activeCollectionIds.includes(m.collectionId)) {
-          allowed.add(m.locationId);
-        }
+      for (const m of members) {
+        allowed.add(m.locationId);
       }
       result = result.filter((l) => allowed.has(l.id));
     }
@@ -161,8 +406,9 @@ export function MapClientPage({ initialLocations, collections, categories, colle
     return result;
   }, [
     locations,
-    collectionMembers,
+    members,
     activeCollectionIds,
+    membershipsLoading,
     nearbyOnly,
     myLat,
     myLng,
@@ -180,6 +426,7 @@ export function MapClientPage({ initialLocations, collections, categories, colle
     categoryIcon: loc.category?.icon ?? "map-pin",
     isFavorite: loc.isFavorite,
     isVisited: loc.isVisited,
+    visitCount: loc.visitCount ?? (loc.isVisited ? 1 : 0),
     coverPhotoUrl: loc.photos[0]?.url ?? loc.coverPhotoUrl,
   }));
 
@@ -212,7 +459,7 @@ export function MapClientPage({ initialLocations, collections, categories, colle
     [measureMode, startAddingLocation, t]
   );
 
-  const handleLocationCreated = (newLoc: CreatedLocation) => {
+  const handleLocationCreated = (newLoc: LocationCreatedPayload) => {
     const row: LocationRow = {
       id: newLoc.id,
       title: newLoc.title,
@@ -220,9 +467,11 @@ export function MapClientPage({ initialLocations, collections, categories, colle
       longitude: newLoc.longitude,
       isFavorite: newLoc.isFavorite,
       isVisited: newLoc.isVisited,
-      coverPhotoUrl: newLoc.coverPhotoUrl,
+      coverPhotoUrl: newLoc.coverPhotoUrl ?? newLoc.photos[0]?.url ?? null,
       categoryId: newLoc.categoryId,
-      category: newLoc.category ? { color: newLoc.category.color, icon: newLoc.category.icon, name: newLoc.category.name } : null,
+      category: newLoc.category
+        ? { color: newLoc.category.color, icon: newLoc.category.icon, name: newLoc.category.name }
+        : null,
       photos: newLoc.photos.map((p) => ({ url: p.url })),
     };
     setLocations((prev) => [...prev, row]);
@@ -331,6 +580,7 @@ export function MapClientPage({ initialLocations, collections, categories, colle
         selectedId={selectedLocationId}
         onLocationClick={setSelectedLocation}
         onMapClick={mapClickActive ? handleMapClick : undefined}
+        onBoundsChange={setMapBounds}
         isAddingLocation={isAddingLocation}
         measureMode={measureMode}
         measurePoints={measurePoints}
@@ -339,6 +589,11 @@ export function MapClientPage({ initialLocations, collections, categories, colle
         showClusters={showClusters}
         showHeatmap={showHeatmap}
         geojsonOverlay={geojsonOverlay}
+        tripPolyline={
+          activeTrack && activeTrack.points.length >= 2
+            ? activeTrack.points.map((p) => ({ ...p, color: "#0d9488" }))
+            : undefined
+        }
         className="absolute inset-0"
       />
 
@@ -360,11 +615,23 @@ export function MapClientPage({ initialLocations, collections, categories, colle
             }}
           />
           <Button
+            variant={trailDay ? "secondary" : "ghost"}
+            size="icon-sm"
+            onClick={toggleTrailDay}
+            className="rounded-xl h-9 w-9"
+            title={t("trailDayHint")}
+            aria-label={trailDay ? t("trailDayOn") : t("trailDay")}
+            aria-pressed={trailDay}
+          >
+            <Sun className="h-4 w-4" />
+          </Button>
+          <Button
             variant="ghost"
             size="icon-sm"
             onClick={() => setShowSearch(true)}
             className="rounded-xl h-9 w-9"
             title={t("searchSpots")}
+            aria-label={t("searchSpots")}
           >
             <Search className="h-4 w-4" />
           </Button>
@@ -374,6 +641,7 @@ export function MapClientPage({ initialLocations, collections, categories, colle
             onClick={() => setShowSidebar((v) => !v)}
             className="rounded-xl h-9 w-9"
             title={t("layers")}
+            aria-label={t("layers")}
           >
             <Layers className="h-4 w-4" />
           </Button>
@@ -384,49 +652,78 @@ export function MapClientPage({ initialLocations, collections, categories, colle
             disabled={geoLoading}
             className="rounded-xl h-9 w-9"
             title={t("myLocation")}
+            aria-label={t("myLocation")}
           >
             <LocateFixed className={cn("h-4 w-4", geoLoading && "animate-pulse")} />
           </Button>
-          <Button
-            variant={measureMode ? "secondary" : "ghost"}
-            size="icon-sm"
-            onClick={toggleMeasure}
-            className="rounded-xl h-9 w-9"
-            title={t("measure")}
-          >
-            <Ruler className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={radiusActive ? "secondary" : "ghost"}
-            size="icon-sm"
-            onClick={toggleRadius}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              cycleRadiusKm();
-            }}
-            className="rounded-xl h-9 w-9"
-            title={t("radiusSearch")}
-          >
-            <CircleDot className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={showHeatmap ? "secondary" : "ghost"}
-            size="icon-sm"
-            onClick={() => setShowHeatmap((v) => !v)}
-            className="rounded-xl h-9 w-9"
-            title="Visit heatmap"
-          >
-            <Flame className="h-4 w-4" />
-          </Button>
-          <GeoJsonOverlayButton
-            onDataChange={setGeojsonOverlay}
-            hasData={geojsonOverlay != null}
+          {!trailDay && (
+            <>
+              <Button
+                variant={measureMode ? "secondary" : "ghost"}
+                size="icon-sm"
+                onClick={toggleMeasure}
+                className="rounded-xl h-9 w-9"
+                title={t("measure")}
+                aria-label={t("measure")}
+              >
+                <Ruler className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={radiusActive ? "secondary" : "ghost"}
+                size="icon-sm"
+                onClick={toggleRadius}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  cycleRadiusKm();
+                }}
+                className="rounded-xl h-9 w-9"
+                title={t("radiusSearch")}
+                aria-label={t("radiusSearch")}
+              >
+                <CircleDot className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={showHeatmap ? "secondary" : "ghost"}
+                size="icon-sm"
+                onClick={() => setShowHeatmap((v) => !v)}
+                className="rounded-xl h-9 w-9"
+                title={t("heatmap")}
+                aria-label={t("heatmap")}
+              >
+                <Flame className="h-4 w-4" />
+              </Button>
+              <GeoJsonOverlayButton
+                onDataChange={setGeojsonOverlay}
+                hasData={geojsonOverlay != null}
+              />
+            </>
+          )}
+          <GpxRecorder
+            locationId={selectedLocationId}
+            atlasSpots={locations}
+            onOpenTracks={() => setTracksOpen(true)}
           />
-          <GpxRecorder />
+          <Button
+            variant={tracksOpen || activeTrack ? "secondary" : "ghost"}
+            size="icon-sm"
+            onClick={() => setTracksOpen((v) => !v)}
+            className="rounded-xl h-9 w-9"
+            title={t("tracksTitle")}
+            aria-label={t("tracksTitle")}
+          >
+            <Route className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Mobile FAB — tap to add; long-press = add at GPS */}
+      <TracksSheet
+        open={tracksOpen}
+        onClose={() => setTracksOpen(false)}
+        activeTrackId={activeTrack?.id ?? null}
+        onShowTrack={setActiveTrack}
+      />
+
+      {/* Mobile FABs — add + check-in only; secondary tools live in chip “כלים” */}
       <Button
         onClick={handleAddClick}
         onContextMenu={(e) => {
@@ -448,16 +745,18 @@ export function MapClientPage({ initialLocations, collections, categories, colle
         <Plus className="h-6 w-6" strokeWidth={2.5} />
       </Button>
 
-      {/* Quick Check-in FAB */}
       <Button
         onClick={handleQuickCheckin}
         disabled={checkingIn}
         size="icon"
-        className="md:hidden fixed z-30 h-14 w-14 rounded-2xl border-0 bg-emerald-600 hover:bg-emerald-700 text-white bottom-[calc(var(--nav-height)+var(--safe-bottom)+0.75rem)] start-20 pointer-events-auto active:scale-95 transition-transform"
-        aria-label="Quick check-in"
-        title="Check in at nearest spot"
+        className={cn(
+          "md:hidden fixed z-30 rounded-2xl border-0 bg-emerald-600 hover:bg-emerald-700 text-white bottom-[calc(var(--nav-height)+var(--safe-bottom)+0.75rem)] start-20 pointer-events-auto active:scale-95 transition-transform",
+          trailDay ? "h-16 w-16 shadow-lg ring-2 ring-emerald-300/60" : "h-14 w-14"
+        )}
+        aria-label={t("checkinAria")}
+        title={t("checkinTitle")}
       >
-        <CheckCircle2 className={cn("h-6 w-6", checkingIn && "animate-pulse")} strokeWidth={2} />
+        <CheckCircle2 className={cn(trailDay ? "h-7 w-7" : "h-6 w-6", checkingIn && "animate-pulse")} strokeWidth={2} />
       </Button>
 
       <MapChipBar
@@ -465,12 +764,133 @@ export function MapClientPage({ initialLocations, collections, categories, colle
         onLayers={() => setShowSidebar((v) => !v)}
         onNearby={() => setNearbyOnly((v) => !v)}
         onSearch={() => setShowSearch(true)}
-        onMeasure={toggleMeasure}
-        onRadius={toggleRadius}
+        onTools={() => setToolsOpen((v) => !v)}
+        onTrailDay={toggleTrailDay}
         nearbyActive={nearbyOnly}
-        measureActive={measureMode}
-        radiusActive={radiusActive}
+        trailDayActive={trailDay}
+        toolsActive={toolsOpen || measureMode || radiusActive || showHeatmap || tracksOpen}
+        toolsExpanded={toolsOpen}
       />
+
+      {toolsOpen && (
+        <div
+          id="map-field-tools"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("fieldToolsTitle")}
+          className="md:hidden absolute inset-x-3 z-20 bottom-[calc(var(--nav-height)+var(--safe-bottom)+8.5rem)] pointer-events-auto"
+        >
+          <div className="glass-strong rounded-2xl border border-border/50 shadow-float p-3 space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide" id="map-field-tools-title">
+                {t("fieldToolsTitle")}
+              </p>
+              <button
+                type="button"
+                className="p-1 rounded-lg hover:bg-muted"
+                aria-label={t("cancel")}
+                onClick={() => setToolsOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                className="h-11 rounded-xl justify-start gap-2"
+                onClick={() => {
+                  handleGpsQuickAdd();
+                  setToolsOpen(false);
+                }}
+              >
+                <LocateFixed className="h-4 w-4" />
+                {t("addAtGps")}
+              </Button>
+              {!trailDay && (
+                <>
+                  <Button
+                    variant={measureMode ? "secondary" : "outline"}
+                    className="h-11 rounded-xl justify-start gap-2"
+                    onClick={() => {
+                      toggleMeasure();
+                      setToolsOpen(false);
+                    }}
+                  >
+                    <Ruler className="h-4 w-4" />
+                    {t("measure")}
+                  </Button>
+                  <Button
+                    variant={radiusActive ? "secondary" : "outline"}
+                    className="h-11 rounded-xl justify-start gap-2"
+                    onClick={() => {
+                      toggleRadius();
+                      setToolsOpen(false);
+                    }}
+                  >
+                    <CircleDot className="h-4 w-4" />
+                    {t("radiusSearch")}
+                  </Button>
+                  <Button
+                    variant={showHeatmap ? "secondary" : "outline"}
+                    className="h-11 rounded-xl justify-start gap-2"
+                    onClick={() => {
+                      setShowHeatmap((v) => !v);
+                      setToolsOpen(false);
+                    }}
+                  >
+                    <Flame className="h-4 w-4" />
+                    {t("heatmap")}
+                  </Button>
+                </>
+              )}
+              <Button
+                variant={tracksOpen || activeTrack ? "secondary" : "outline"}
+                className={cn(
+                  "h-11 rounded-xl justify-start gap-2",
+                  trailDay ? "col-span-1" : "col-span-2"
+                )}
+                onClick={() => {
+                  setTracksOpen(true);
+                  setToolsOpen(false);
+                }}
+              >
+                <Route className="h-4 w-4" />
+                {t("tracksTitle")}
+              </Button>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <div className="flex-1">
+                <GpxRecorder
+                  locationId={selectedLocationId}
+                  atlasSpots={locations}
+                  onOpenTracks={() => setTracksOpen(true)}
+                />
+              </div>
+              {!trailDay && (
+                <GeoJsonOverlayButton
+                  onDataChange={setGeojsonOverlay}
+                  hasData={geojsonOverlay != null}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTruncationHint && atlasTotalCount != null && (
+        <div className="absolute top-4 inset-x-0 z-10 flex justify-center px-4 pointer-events-none md:top-14">
+          <button
+            type="button"
+            className="pointer-events-auto max-w-md text-xs font-medium rounded-xl px-3 py-2 bg-background/90 border border-border/60 shadow-sm backdrop-blur-sm text-start"
+            onClick={() => setShowTruncationHint(false)}
+          >
+            {t("atlasTruncatedHint", {
+              shown: initialLocations.length,
+              total: atlasTotalCount,
+            })}
+          </button>
+        </div>
+      )}
 
       {(measureMode && measureKm != null) || (radiusActive && radiusCenter) ? (
         <div className="absolute top-4 inset-x-0 z-10 flex justify-center px-4 pointer-events-none md:top-16">
@@ -518,6 +938,12 @@ export function MapClientPage({ initialLocations, collections, categories, colle
           <LocationDetailPanel
             locationId={selectedLocationId}
             onClose={() => setSelectedLocation(null)}
+            onDeleted={(id) => setLocations((prev) => prev.filter((l) => l.id !== id))}
+            onPatched={(id, patch) =>
+              setLocations((prev) =>
+                prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
+              )
+            }
             categories={categories}
           />
         )}
@@ -540,6 +966,12 @@ export function MapClientPage({ initialLocations, collections, categories, colle
             <LocationDetailPanel
               locationId={selectedLocationId}
               onClose={() => setSelectedLocation(null)}
+              onDeleted={(id) => setLocations((prev) => prev.filter((l) => l.id !== id))}
+              onPatched={(id, patch) =>
+                setLocations((prev) =>
+                  prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
+                )
+              }
               categories={categories}
             />
           </motion.div>

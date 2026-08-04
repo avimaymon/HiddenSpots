@@ -10,12 +10,15 @@ async function requireAuth() {
   return session.user.id;
 }
 
+const TAGS_LIST_MAX = 500;
+
 export async function getTagsForUser() {
   const userId = await requireAuth();
   return prisma.tag.findMany({
     where: { userId },
     orderBy: { name: "asc" },
     include: { _count: { select: { locations: true } } },
+    take: TAGS_LIST_MAX,
   });
 }
 

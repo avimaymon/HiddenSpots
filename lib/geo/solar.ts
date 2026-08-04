@@ -1,37 +1,47 @@
 import * as SunCalc from "suncalc";
 
+export type MoonPhaseKey =
+  | "new"
+  | "waxingCrescent"
+  | "firstQuarter"
+  | "waxingGibbous"
+  | "full"
+  | "waningGibbous"
+  | "lastQuarter"
+  | "waningCrescent";
+
 export type SolarInfo = {
   sunrise: string;
   sunset: string;
   goldenHourMorning: string;
   goldenHourEvening: string;
   moonPhase: number;
-  moonPhaseName: string;
+  moonPhaseKey: MoonPhaseKey;
   moonPhaseEmoji: string;
 };
 
-function fmt(date: Date): string {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function fmt(date: Date, locale?: string): string {
+  return date.toLocaleTimeString(locale || undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
-function moonName(phase: number): { name: string; emoji: string } {
-  if (phase < 0.03 || phase > 0.97) return { name: "New Moon", emoji: "🌑" };
-  if (phase < 0.22) return { name: "Waxing Crescent", emoji: "🌒" };
-  if (phase < 0.28) return { name: "First Quarter", emoji: "🌓" };
-  if (phase < 0.47) return { name: "Waxing Gibbous", emoji: "🌔" };
-  if (phase < 0.53) return { name: "Full Moon", emoji: "🌕" };
-  if (phase < 0.72) return { name: "Waning Gibbous", emoji: "🌖" };
-  if (phase < 0.78) return { name: "Last Quarter", emoji: "🌗" };
-  return { name: "Waning Crescent", emoji: "🌘" };
+export function moonPhaseKey(phase: number): { key: MoonPhaseKey; emoji: string } {
+  if (phase < 0.03 || phase > 0.97) return { key: "new", emoji: "🌑" };
+  if (phase < 0.22) return { key: "waxingCrescent", emoji: "🌒" };
+  if (phase < 0.28) return { key: "firstQuarter", emoji: "🌓" };
+  if (phase < 0.47) return { key: "waxingGibbous", emoji: "🌔" };
+  if (phase < 0.53) return { key: "full", emoji: "🌕" };
+  if (phase < 0.72) return { key: "waningGibbous", emoji: "🌖" };
+  if (phase < 0.78) return { key: "lastQuarter", emoji: "🌗" };
+  return { key: "waningCrescent", emoji: "🌘" };
 }
 
-export function getSolarInfo(lat: number, lng: number, date = new Date()): SolarInfo {
+export function getSolarInfo(lat: number, lng: number, date = new Date(), locale?: string): SolarInfo {
   const times = SunCalc.getTimes(date, lat, lng);
   const moon = SunCalc.getMoonIllumination(date);
-  const { name, emoji } = moonName(moon.phase);
+  const { key, emoji } = moonPhaseKey(moon.phase);
   function safeFmt(d: Date | null): string {
     if (!d || isNaN(d.getTime())) return "—";
-    return fmt(d);
+    return fmt(d, locale);
   }
 
   return {
@@ -40,7 +50,7 @@ export function getSolarInfo(lat: number, lng: number, date = new Date()): Solar
     goldenHourMorning: safeFmt(times.goldenHour),
     goldenHourEvening: safeFmt(times.goldenHourEnd),
     moonPhase: moon.phase,
-    moonPhaseName: name,
+    moonPhaseKey: key,
     moonPhaseEmoji: emoji,
   };
 }

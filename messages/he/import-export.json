@@ -16,5 +16,7 @@
   "importFailed": "הייבוא נכשל",
   "importedCount": "יובאו {count} נקודות",
   "duplicatesSkipped": "{count} כפילויות דולגו",
-  "errorsCount": "{count} שגיאות"
+  "errorsCount": "{count} שגיאות",
+  "truncatedHint": "יובאו עד {processed} מתוך {received} — פצלו קבצים גדולים",
+  "rateLimited": "יותר מדי ייבואים — נסו שוב בעוד דקה"
 }

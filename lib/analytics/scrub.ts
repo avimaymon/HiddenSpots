@@ -20,7 +20,7 @@ export function scrubPii(props?: AnalyticsProps): AnalyticsProps | undefined {
 }
 
 export function isDoNotTrack(): boolean {
-  if (typeof navigator === "undefined") return false;
+  if (typeof navigator === "undefined" || typeof window === "undefined") return false;
   const nav = navigator as Navigator & { msDoNotTrack?: string };
   const flag = nav.doNotTrack ?? nav.msDoNotTrack ?? (window as Window & { doNotTrack?: string }).doNotTrack;
   return flag === "1" || flag === "yes";

@@ -3,54 +3,98 @@
 import { useRef, useState } from "react";
 import { Upload, X, Loader2, WifiOff } from "lucide-react";
 import Image from "next/image";
-import { enqueueSync } from "@/lib/offline/db";
+import { storePhotoBlob } from "@/lib/offline/db";
 import { generateBlurHash } from "@/lib/media/blurhash-client";
+import { useTranslations } from "next-intl";
 
 interface Props {
   onUploadComplete: (url: string, blurHash?: string) => void;
+  /** When creating a location, collect files for upload after the row exists. */
+  onFilesSelected?: (files: File[]) => void;
   locationId?: string;
   multiple?: boolean;
   existingPhotos?: { url: string; id: string }[];
   onRemove?: (id: string) => void;
 }
 
-export function PhotoUpload({ onUploadComplete, locationId, multiple = true, existingPhotos = [], onRemove }: Props) {
+export function PhotoUpload({
+  onUploadComplete,
+  onFilesSelected,
+  locationId,
+  multiple = true,
+  existingPhotos = [],
+  onRemove,
+}: Props) {
+  const t = useTranslations("locations");
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [previews, setPreviews] = useState<{ url: string; uploading: boolean; queued?: boolean }[]>([]);
+  const [previews, setPreviews] = useState<{ url: string; uploading: boolean; queued?: boolean }[]>(
+    []
+  );
 
   async function handleFiles(files: FileList) {
     const fileArray = Array.from(files);
     const newPreviews = fileArray.map((f) => ({ url: URL.createObjectURL(f), uploading: true }));
     setPreviews((p) => [...p, ...newPreviews]);
     setUploading(true);
+    const baseLen = previews.length;
+
+    // No location yet — keep files for the parent to upload after create
+    if (!locationId) {
+      onFilesSelected?.(fileArray);
+      for (let i = 0; i < fileArray.length; i++) {
+        onUploadComplete(newPreviews[i].url);
+        setPreviews((p) =>
+          p.map((prev, idx) =>
+            idx === baseLen + i ? { ...prev, uploading: false } : prev
+          )
+        );
+      }
+      setUploading(false);
+      return;
+    }
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
 
       if (!navigator.onLine) {
-        // ponytail: offline path - enqueue when location already saved, skip otherwise
-        if (locationId) {
-          const blobUrl = newPreviews[i].url;
-          await enqueueSync("upload-photo", { locationId, url: blobUrl, isPrimary: i === 0 });
-          onUploadComplete(blobUrl);
-          setPreviews((p) => p.map((prev, idx) => idx === previews.length + i ? { ...prev, uploading: false, queued: true } : prev));
-        } else {
-          setPreviews((p) => p.map((prev, idx) => idx === previews.length + i ? { ...prev, uploading: false } : prev));
+        try {
+          await storePhotoBlob({ locationId, file, isPrimary: i === 0 });
+          onUploadComplete(newPreviews[i].url);
+          setPreviews((p) =>
+            p.map((prev, idx) =>
+              idx === baseLen + i ? { ...prev, uploading: false, queued: true } : prev
+            )
+          );
+        } catch {
+          setPreviews((p) =>
+            p.map((prev, idx) =>
+              idx === baseLen + i ? { ...prev, uploading: false } : prev
+            )
+          );
         }
         continue;
       }
 
-      const [blurHash, fd] = await Promise.all([
-        generateBlurHash(file),
-        Promise.resolve(new FormData()),
-      ]);
+      const blurHash = await generateBlurHash(file);
+      const fd = new FormData();
       fd.append("file", file);
+      fd.append("locationId", locationId);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       if (res.ok) {
-        const { url } = await res.json() as { url: string };
+        const { url } = (await res.json()) as { url: string };
         onUploadComplete(url, blurHash ?? undefined);
-        setPreviews((p) => p.map((prev, idx) => idx === previews.length + i ? { ...prev, uploading: false, url } : prev));
+        setPreviews((p) =>
+          p.map((prev, idx) =>
+            idx === baseLen + i ? { ...prev, uploading: false, url } : prev
+          )
+        );
+      } else {
+        setPreviews((p) =>
+          p.map((prev, idx) =>
+            idx === baseLen + i ? { ...prev, uploading: false } : prev
+          )
+        );
       }
     }
     setUploading(false);
@@ -62,7 +106,10 @@ export function PhotoUpload({ onUploadComplete, locationId, multiple = true, exi
         type="button"
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files) handleFiles(e.dataTransfer.files); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+        }}
         className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
       >
         {uploading ? (
@@ -70,8 +117,8 @@ export function PhotoUpload({ onUploadComplete, locationId, multiple = true, exi
         ) : (
           <>
             <Upload className="h-6 w-6 text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground">Drop photos or click to upload</p>
-            <p className="text-xs text-muted-foreground mt-0.5">JPG, PNG, WEBP up to 10MB</p>
+            <p className="text-sm text-muted-foreground">{t("photoDropHint")}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("photoFormatsHint")}</p>
           </>
         )}
       </button>
@@ -82,7 +129,9 @@ export function PhotoUpload({ onUploadComplete, locationId, multiple = true, exi
         capture="environment"
         multiple={multiple}
         className="hidden"
-        onChange={(e) => { if (e.target.files) handleFiles(e.target.files); }}
+        onChange={(e) => {
+          if (e.target.files) handleFiles(e.target.files);
+        }}
       />
 
       {(existingPhotos.length > 0 || previews.length > 0) && (
@@ -95,7 +144,7 @@ export function PhotoUpload({ onUploadComplete, locationId, multiple = true, exi
                   type="button"
                   onClick={() => onRemove(photo.id)}
                   className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center"
-                  aria-label="Remove photo"
+                  aria-label={t("removePhoto")}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -111,7 +160,10 @@ export function PhotoUpload({ onUploadComplete, locationId, multiple = true, exi
                 </div>
               )}
               {p.queued && (
-                <div className="absolute inset-0 bg-amber-900/60 flex items-center justify-center" title="Queued for upload">
+                <div
+                  className="absolute inset-0 bg-amber-900/60 flex items-center justify-center"
+                  title={t("photoQueued")}
+                >
                   <WifiOff className="h-4 w-4 text-white" />
                 </div>
               )}
@@ -121,4 +173,18 @@ export function PhotoUpload({ onUploadComplete, locationId, multiple = true, exi
       )}
     </div>
   );
+}
+
+/** Upload a local file bound to an owned locationId. */
+export async function uploadLocationPhotoFile(
+  file: File,
+  locationId: string
+): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("locationId", locationId);
+  const res = await fetch("/api/upload", { method: "POST", body: fd });
+  if (!res.ok) throw new Error("Upload failed");
+  const { url } = (await res.json()) as { url: string };
+  return url;
 }

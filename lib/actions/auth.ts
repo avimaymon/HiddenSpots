@@ -3,6 +3,8 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { seedSystemCategories } from "@/lib/auth/system-categories";
+import { seedStarterCollections } from "@/lib/auth/starter-collections";
+import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 
 const signupSchema = z.object({
@@ -13,6 +15,13 @@ const signupSchema = z.object({
 
 export async function registerUser(data: unknown) {
   const validated = signupSchema.parse(data);
+  const { ok } = await rateLimit(
+    `register:${validated.email.toLowerCase()}`,
+    5,
+    60 * 60 * 1000,
+    { failClosed: true }
+  );
+  if (!ok) throw new Error("RATE_LIMITED");
   const existing = await prisma.user.findUnique({ where: { email: validated.email } });
   if (existing) throw new Error("Email already registered");
 
@@ -30,6 +39,7 @@ export async function registerUser(data: unknown) {
   });
 
   await seedSystemCategories(prisma, user.id);
+  await seedStarterCollections(prisma, user.id);
 
   return { id: user.id, email: user.email };
 }

@@ -1,0 +1,33 @@
+{
+  "title": "{year} in review",
+  "subtitle": "Your year exploring hidden spots",
+  "share": "Share",
+  "shareTitle": "My {year} in HiddenSpots",
+  "visits": "Visits",
+  "visitsCount": "{count} visits",
+  "uniqueSpots": "Unique spots",
+  "newLocations": "New locations",
+  "favSeason": "Fav season",
+  "byMonth": "Visits by month",
+  "topSpots": "Most visited spots",
+  "months": {
+    "0": "Jan",
+    "1": "Feb",
+    "2": "Mar",
+    "3": "Apr",
+    "4": "May",
+    "5": "Jun",
+    "6": "Jul",
+    "7": "Aug",
+    "8": "Sep",
+    "9": "Oct",
+    "10": "Nov",
+    "11": "Dec"
+  },
+  "seasons": {
+    "spring": "spring",
+    "summer": "summer",
+    "fall": "fall",
+    "winter": "winter"
+  }
+}

@@ -6,8 +6,11 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { seedSystemCategories } from "@/lib/auth/system-categories";
+import { seedStarterCollections } from "@/lib/auth/starter-collections";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  secret: process.env.AUTH_SECRET,
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
   pages: {
@@ -18,12 +21,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.AUTH_GOOGLE_ID!,
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
-      allowDangerousEmailAccountLinking: true,
+      // Account takeover risk — never auto-link in production
+      allowDangerousEmailAccountLinking: process.env.NODE_ENV !== "production",
     }),
     GitHub({
       clientId: process.env.AUTH_GITHUB_ID!,
       clientSecret: process.env.AUTH_GITHUB_SECRET!,
-      allowDangerousEmailAccountLinking: true,
+      allowDangerousEmailAccountLinking: process.env.NODE_ENV !== "production",
     }),
     Credentials({
       name: "Email",
@@ -33,6 +37,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
+        const email = String(credentials.email).toLowerCase();
+        const { ok } = await rateLimit(`creds:${email}`, 10, 60_000, {
+          failClosed: true,
+        });
+        // Same null as bad password — no rate-limit oracle.
+        if (!ok) return null;
         const user = await prisma.user.findUnique({
           where: { email: credentials.email as string },
         });
@@ -54,11 +64,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token.id) session.user.id = token.id as string;
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      // Relative same-app paths only (/he|/en); block external open redirects
+      if (url.startsWith("/")) {
+        if (/^\/(he|en)(\/|$)/.test(url) && !url.startsWith("//")) {
+          return `${baseUrl}${url}`;
+        }
+        return `${baseUrl}/he/app`;
+      }
+      try {
+        const target = new URL(url);
+        if (target.origin === baseUrl) {
+          const path = `${target.pathname}${target.search}`;
+          if (/^\/(he|en)(\/|$)/.test(path)) return url;
+        }
+      } catch {
+        /* ignore */
+      }
+      return `${baseUrl}/he/app`;
+    },
   },
   events: {
     async createUser({ user }) {
       if (!user.id) return;
       await seedSystemCategories(prisma, user.id);
+      await seedStarterCollections(prisma, user.id);
     },
   },
 });

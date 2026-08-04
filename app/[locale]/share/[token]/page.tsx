@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { getShareByToken, recordShareView } from "@/lib/actions/shares";
-import { getComments } from "@/lib/actions/comments";
+import { getCommentsForShareToken } from "@/lib/actions/comments";
 import { auth } from "@/lib/auth/config";
 import { notFound } from "next/navigation";
 import { SharePublicPage } from "@/components/share/SharePublicPage";
@@ -70,9 +70,7 @@ export default async function SharePage({ params }: Props) {
   await recordShareView(token);
 
   const session = await auth();
-  const comments = share.location
-    ? await getComments(share.location.id)
-    : [];
+  const comments = share.location ? await getCommentsForShareToken(token) : [];
 
   const isOwner = Boolean(session?.user?.id && session.user.id === share.sharedById);
   const isGrantee = Boolean(session?.user?.id && session.user.id === share.sharedWithId);
@@ -92,9 +90,10 @@ export default async function SharePage({ params }: Props) {
             initialComments={comments}
             currentUserId={session?.user?.id ?? undefined}
             canComment={canComment}
+            shareToken={token}
           />
           <div className="flex justify-end">
-            <SpotReportButton locationId={share.location.id} />
+            <SpotReportButton locationId={share.location.id} shareToken={token} />
           </div>
         </div>
       )}

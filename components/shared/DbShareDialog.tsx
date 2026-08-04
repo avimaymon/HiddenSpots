@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Link2, Loader2, Copy, Check, Share as ShareIcon, Calendar, QrCode, MessageCircle, Users,
@@ -17,6 +17,7 @@ import { createShare } from "@/lib/actions/shares";
 import { useShare, buildWhatsAppText } from "@/hooks/use-share";
 import { toast } from "@/hooks/use-toast";
 import { track } from "@/lib/analytics";
+import { buildShareRecipientPreview } from "@/lib/shares/recipient-preview";
 
 interface Props {
   open: boolean;
@@ -28,6 +29,12 @@ interface Props {
   /** Prefer COMMENT for hiking-partner invites (can leave notes). */
   defaultPermission?: "VIEW" | "COMMENT" | "EDIT";
   partnerInvite?: boolean;
+  /** Spot privacy for recipient preview (location shares). */
+  locationPrivacy?: string | null;
+  fuzzyCoordinates?: boolean | null;
+  hasDescription?: boolean;
+  hasAddress?: boolean;
+  hasPhotos?: boolean;
 }
 
 export function DbShareDialog({
@@ -39,6 +46,11 @@ export function DbShareDialog({
   title,
   defaultPermission = "VIEW",
   partnerInvite = false,
+  locationPrivacy,
+  fuzzyCoordinates,
+  hasDescription = true,
+  hasAddress = true,
+  hasPhotos = true,
 }: Props) {
   const t = useTranslations("sharing");
   const tc = useTranslations("common");
@@ -53,8 +65,34 @@ export function DbShareDialog({
   );
   const [email, setEmail] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [online, setOnline] = useState(
+    () => typeof navigator === "undefined" || navigator.onLine
+  );
+  const recipientPreview = buildShareRecipientPreview({
+    permission,
+    privacy: locationPrivacy,
+    fuzzyCoordinates,
+    hasDescription: Boolean(locationId) && hasDescription,
+    hasAddress: Boolean(locationId) && hasAddress,
+    hasPhotos: Boolean(locationId) && hasPhotos,
+  });
+
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
 
   async function handleCreate() {
+    if (!online) {
+      toast({ title: t("offlineNeedConnection"), variant: "destructive" });
+      return;
+    }
     setLoading(true);
     try {
       const created = await createShare({
@@ -132,7 +170,16 @@ export function DbShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent
+        className="max-w-md"
+        description={
+          partnerInvite
+            ? t("invitePartnerTitle")
+            : title
+              ? t("shareNamed", { title })
+              : t("shareLink")
+        }
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {partnerInvite ? (
@@ -191,6 +238,11 @@ export function DbShareDialog({
           </div>
         ) : (
           <div className="space-y-4">
+            {!online && (
+              <p className="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
+                {t("offlineNeedConnection")}
+              </p>
+            )}
             {partnerInvite && (
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {t("invitePartnerHint")}
@@ -209,6 +261,32 @@ export function DbShareDialog({
                 </SelectContent>
               </Select>
             </div>
+            {locationId && (
+              <div
+                role="note"
+                className="rounded-xl border border-border/50 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground space-y-1"
+              >
+                <p className="font-semibold text-foreground">{t("recipientPreviewTitle")}</p>
+                <ul className="list-disc ps-4 space-y-0.5">
+                  <li>{t("recipientShowsTitle")}</li>
+                  {recipientPreview.showsDescription && <li>{t("recipientShowsDescription")}</li>}
+                  {recipientPreview.showsPhotos && <li>{t("recipientShowsPhotos")}</li>}
+                  {recipientPreview.secretFuzz ? (
+                    <li>{t("recipientCoordsFuzzy")}</li>
+                  ) : (
+                    <li>{t("recipientCoordsExact")}</li>
+                  )}
+                  <li>{t("recipientNoPrivateNotes")}</li>
+                  <li>
+                    {recipientPreview.permissionNote === "edit"
+                      ? t("recipientCanEdit")
+                      : recipientPreview.permissionNote === "comment"
+                        ? t("recipientCanComment")
+                        : t("recipientCanView")}
+                  </li>
+                </ul>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>{t("inviteEmail")}</Label>
               <Input
@@ -238,7 +316,10 @@ export function DbShareDialog({
             {shareUrl ? tc("close") : tc("cancel")}
           </Button>
           {!shareUrl && (
-            <Button onClick={handleCreate} disabled={loading}>
+            <Button
+              onClick={handleCreate}
+              disabled={loading || !online}
+            >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               {partnerInvite ? t("invitePartnerCreate") : t("createLink")}
             </Button>

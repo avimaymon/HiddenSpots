@@ -16,6 +16,7 @@ type WindowWithSR = Window & { SpeechRecognition?: SpeechRecCtor; webkitSpeechRe
 import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { createVisit, addVisitPhoto } from "@/lib/actions/visits";
+import { enqueueSync } from "@/lib/offline/db";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -86,7 +87,7 @@ export function LogVisitDialog({
   function toggleVoice() {
     const win = window as WindowWithSR;
     const SR = win.SpeechRecognition ?? win.webkitSpeechRecognition;
-    if (!SR) { toast({ title: "Speech recognition not supported", variant: "destructive" }); return; }
+    if (!SR) { toast({ title: t("speechUnsupported"), variant: "destructive" }); return; }
     if (listening && recognitionRef.current) {
       recognitionRef.current.stop();
       setListening(false);
@@ -117,19 +118,34 @@ export function LogVisitDialog({
     setLoading(true);
     try {
       let weatherValue = weather.trim() || undefined;
-      if (!weatherValue && latitude != null && longitude != null) {
+      if (!weatherValue && navigator.onLine && latitude != null && longitude != null) {
         weatherValue = await fetchWeather(latitude, longitude);
       }
 
-      const visit = await createVisit({
+      const visitPayload = {
         locationId,
         visitedAt: new Date(visitedAt).toISOString(),
         rating: rating || undefined,
         notes: notes.trim() || undefined,
         weather: weatherValue,
         duration: duration ? Number(duration) : undefined,
-        companions: [],
-      });
+        companions: [] as string[],
+      };
+
+      if (!navigator.onLine) {
+        await enqueueSync("visit", visitPayload);
+        toast({ title: t("logged"), description: t("loggedOffline"), variant: "success" });
+        onLogged?.();
+        onOpenChange(false);
+        setRating(0);
+        setNotes("");
+        setWeather("");
+        setDuration("");
+        onPickPhoto(null);
+        return;
+      }
+
+      const visit = await createVisit(visitPayload);
 
       if (photoFile) {
         const url = await uploadPhoto(photoFile, locationId);
@@ -153,7 +169,7 @@ export function LogVisitDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" description={t("logVisit")}>
         <DialogHeader>
           <DialogTitle>{t("logVisit")}</DialogTitle>
         </DialogHeader>
@@ -196,12 +212,12 @@ export function LogVisitDialog({
                 type="button"
                 onClick={toggleVoice}
                 className={cn("h-7 w-7 rounded-lg flex items-center justify-center transition-colors", listening ? "bg-destructive/15 text-destructive" : "hover:bg-muted text-muted-foreground")}
-                title={listening ? "Stop recording" : "Voice note"}
+                title={listening ? t("voiceStop") : t("voiceNote")}
               >
                 {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </button>
             </div>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder={listening ? "Listening…" : ""} />
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder={listening ? t("listening") : ""} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

@@ -35,6 +35,7 @@ export async function resolveDriveAccessToken(userId: string): Promise<string> {
 export async function backupUserToDrive(userId: string): Promise<BackupCoreResult> {
   const accessToken = await resolveDriveAccessToken(userId);
 
+  // ponytail: Drive JSON ceiling — match geo export; chunked Drive uploads later.
   const locations = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     select: {
@@ -53,6 +54,7 @@ export async function backupUserToDrive(userId: string): Promise<BackupCoreResul
       tags: { include: { tag: true } },
     },
     orderBy: { title: "asc" },
+    take: 5_000,
   });
 
   const geojsonFeatures = locations.map((loc) => ({

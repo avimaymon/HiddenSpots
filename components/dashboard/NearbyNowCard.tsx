@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { Navigation, MapPin } from "lucide-react";
 import * as turf from "@turf/turf";
+import { formatDistance } from "@/lib/utils";
 
 interface Props {
   locations: { id: string; title: string; latitude: number; longitude: number }[];
 }
 
 export function NearbyNowCard({ locations }: Props) {
-  const [nearest, setNearest] = useState<{ id: string; title: string; distanceKm: number } | null>(null);
+  const t = useTranslations("dashboard");
+  const locale = useLocale();
+  const [nearest, setNearest] = useState<{ id: string; title: string; meters: number } | null>(null);
 
   useEffect(() => {
     if (!locations.length) return;
@@ -22,9 +26,12 @@ export function NearbyNowCard({ locations }: Props) {
         let best = locations[0];
         for (const loc of locations) {
           const d = turf.distance(from, turf.point([loc.longitude, loc.latitude]));
-          if (d < minD) { minD = d; best = loc; }
+          if (d < minD) {
+            minD = d;
+            best = loc;
+          }
         }
-        setNearest({ id: best.id, title: best.title, distanceKm: Math.round(minD * 10) / 10 });
+        setNearest({ id: best.id, title: best.title, meters: minD * 1000 });
       },
       () => {},
       { maximumAge: 60000, timeout: 5000 }
@@ -42,13 +49,15 @@ export function NearbyNowCard({ locations }: Props) {
         <Navigation className="h-5 w-5 text-primary" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-muted-foreground font-medium">Nearby now</p>
+        <p className="text-xs text-muted-foreground font-medium">{t("nearbyNow")}</p>
         <p className="text-sm font-bold truncate">{nearest.title}</p>
       </div>
-      <div className="text-right shrink-0">
-        <p className="text-sm font-bold text-primary">{nearest.distanceKm} km</p>
-        <p className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-          <MapPin className="h-2.5 w-2.5" /> away
+      <div className="text-end shrink-0">
+        <p className="text-sm font-bold text-primary">
+          {formatDistance(nearest.meters, locale)}
+        </p>
+        <p className="text-[10px] text-muted-foreground flex items-center gap-0.5 justify-end">
+          <MapPin className="h-2.5 w-2.5" /> {t("nearbyAway")}
         </p>
       </div>
     </Link>

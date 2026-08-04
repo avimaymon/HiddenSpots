@@ -17,9 +17,10 @@ export function FadeIn({
   return (
     <motion.div
       className={className}
-      initial={reduce ? false : { opacity: 0, y }}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduce ? 0 : 0.45, delay: reduce ? 0 : delay, ease: EASE }}
+      suppressHydrationWarning
       {...rest}
     >
       {children}
@@ -66,13 +67,14 @@ export function StaggerItem({
     <motion.div
       className={className}
       variants={{
-        hidden: reduce ? { opacity: 1 } : { opacity: 0, y: 14 },
+        hidden: { opacity: 1 },
         show: {
           opacity: 1,
           y: 0,
           transition: { duration: reduce ? 0 : 0.4, ease: EASE },
         },
       }}
+      suppressHydrationWarning
     >
       {children}
     </motion.div>
@@ -134,9 +136,10 @@ export function PageTransition({ children, className }: { children: ReactNode; c
   return (
     <motion.div
       className={className}
-      initial={reduce ? false : { opacity: 0, y: 8 }}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: EASE }}
+      suppressHydrationWarning
     >
       {children}
     </motion.div>
@@ -156,9 +159,10 @@ export function ScaleIn({
   return (
     <motion.div
       className={className}
-      initial={reduce ? false : { opacity: 0, scale: 0.94 }}
+      initial={false}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: reduce ? 0 : 0.4, delay: reduce ? 0 : delay, ease: EASE }}
+      suppressHydrationWarning
     >
       {children}
     </motion.div>

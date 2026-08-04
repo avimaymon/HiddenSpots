@@ -22,7 +22,11 @@ async function requireAuth() {
 
 export async function getSmartViews() {
   const userId = await requireAuth();
-  return prisma.smartView.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
+  return prisma.smartView.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
 }
 
 export async function createSmartView(data: unknown) {

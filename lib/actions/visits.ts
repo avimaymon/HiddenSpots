@@ -5,7 +5,9 @@ import { activeLocationWhere } from "@/lib/db/filters";
 import { prisma } from "@/lib/db";
 import { revalidateAppPaths } from "@/lib/revalidate";
 import { visitSchema } from "@/lib/validations/schemas";
-import { computeBadges } from "@/lib/badges";
+import { computeBadges, computeStreak, visitHourFlags } from "@/lib/badges";
+import { assertLocationAccess } from "@/lib/permissions/resource-access";
+import { isAllowedPhotoUrl } from "@/lib/media/photo-url";
 
 async function requireAuth() {
   const session = await auth();
@@ -16,6 +18,8 @@ async function requireAuth() {
 export async function createVisit(data: unknown) {
   const userId = await requireAuth();
   const validated = visitSchema.parse(data);
+  // Owner or share COMMENT+ — never mutate foreign spots anonymously via IDOR
+  await assertLocationAccess(userId, validated.locationId, "COMMENT");
   const visitedAt =
     validated.visitedAt instanceof Date
       ? validated.visitedAt
@@ -63,17 +67,21 @@ export async function deleteVisit(id: string) {
   const visit = await assertOwns(userId, id);
   await prisma.visit.delete({ where: { id } });
 
-  // Recalculate location stats
-  const remaining = await prisma.visit.findMany({
-    where: { locationId: visit.locationId },
-    orderBy: { visitedAt: "desc" },
-  });
+  // Recalculate location stats without loading every visit row.
+  const [visitCount, latest] = await Promise.all([
+    prisma.visit.count({ where: { locationId: visit.locationId } }),
+    prisma.visit.findFirst({
+      where: { locationId: visit.locationId },
+      orderBy: { visitedAt: "desc" },
+      select: { visitedAt: true },
+    }),
+  ]);
   await prisma.location.update({
     where: { id: visit.locationId },
     data: {
-      visitCount: remaining.length,
-      isVisited: remaining.length > 0,
-      lastVisitedAt: remaining[0]?.visitedAt ?? null,
+      visitCount,
+      isVisited: visitCount > 0,
+      lastVisitedAt: latest?.visitedAt ?? null,
     },
   });
 
@@ -83,6 +91,7 @@ export async function deleteVisit(id: string) {
 export async function addVisitPhoto(visitId: string, url: string) {
   const userId = await requireAuth();
   const visit = await assertOwns(userId, visitId);
+  if (!isAllowedPhotoUrl(url)) throw new Error("Invalid photo URL");
   const photo = await prisma.visitPhoto.create({
     data: { visitId, url },
   });
@@ -90,20 +99,43 @@ export async function addVisitPhoto(visitId: string, url: string) {
   return photo;
 }
 
-export async function getVisits() {
-  const userId = await requireAuth();
-  return prisma.visit.findMany({
-    where: { userId },
+/** Recent visits page — hard ceiling so serverless handlers cannot OOM. */
+const VISITS_LIST_MAX = 200;
+
+const visitListInclude = {
+  location: {
     include: {
-      location: {
-        include: {
-          category: true,
-          photos: { where: { isPrimary: true }, take: 1 },
-        },
-      },
+      category: true,
+      photos: { where: { isPrimary: true }, take: 1 },
     },
-    orderBy: { visitedAt: "desc" },
-  });
+  },
+} as const;
+
+export async function getVisits(opts?: { take?: number }) {
+  const page = await getVisitsPage({ take: opts?.take });
+  return page.items;
+}
+
+export async function getVisitsPage(opts?: { skip?: number; take?: number }) {
+  const userId = await requireAuth();
+  const take = Math.min(Math.max(opts?.take ?? VISITS_LIST_MAX, 1), VISITS_LIST_MAX);
+  const skip = Math.max(opts?.skip ?? 0, 0);
+  const [items, totalCount] = await Promise.all([
+    prisma.visit.findMany({
+      where: { userId },
+      include: visitListInclude,
+      orderBy: [{ visitedAt: "desc" }, { id: "desc" }],
+      skip,
+      take,
+    }),
+    prisma.visit.count({ where: { userId } }),
+  ]);
+  return {
+    items,
+    totalCount,
+    hasMore: skip + items.length < totalCount,
+    nextSkip: skip + items.length,
+  };
 }
 
 const SEASON_MAP: Record<number, string> = {
@@ -113,22 +145,9 @@ const SEASON_MAP: Record<number, string> = {
   11: "Winter", 0: "Winter", 1: "Winter",
 };
 
-function computeStreak(visits: { visitedAt: Date }[]): number {
-  if (!visits.length) return 0;
-  const weekStart = (d: Date) => {
-    const t = new Date(d);
-    t.setDate(t.getDate() - t.getDay());
-    t.setHours(0, 0, 0, 0);
-    return t.getTime();
-  };
-  const weeks = [...new Set(visits.map((v) => weekStart(v.visitedAt)))].sort((a, b) => b - a);
-  let streak = 1;
-  for (let i = 1; i < weeks.length; i++) {
-    if (weeks[i - 1] - weeks[i] === 7 * 24 * 60 * 60 * 1000) streak++;
-    else break;
-  }
-  return streak;
-}
+/** Cap for streak / hour-badge sampling (not full history). */
+const DASHBOARD_VISIT_SAMPLE_MAX = 500;
+const DASHBOARD_SEASON_SAMPLE_MAX = 2_000;
 
 function computeExplorerRank(totalLocations: number, totalVisits: number): string {
   const score = totalLocations + totalVisits * 2;
@@ -145,6 +164,8 @@ export async function getDashboardStats() {
 
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
 
   const [
     totalLocations,
@@ -159,6 +180,7 @@ export async function getDashboardStats() {
     seasonalSpots,
     weekLocationsAdded,
     weekVisits,
+    todayVisits,
   ] = await Promise.all([
     prisma.location.count({ where: { userId, ...activeLocationWhere } }),
     prisma.visit.count({ where: { userId } }),
@@ -190,7 +212,12 @@ export async function getDashboardStats() {
         },
       },
     }),
-    prisma.visit.findMany({ where: { userId }, select: { visitedAt: true }, orderBy: { visitedAt: "desc" } }),
+    prisma.visit.findMany({
+      where: { userId },
+      select: { visitedAt: true },
+      orderBy: { visitedAt: "desc" },
+      take: DASHBOARD_VISIT_SAMPLE_MAX,
+    }),
     prisma.location.findMany({
       where: {
         userId,
@@ -207,24 +234,30 @@ export async function getDashboardStats() {
     prisma.visit.count({
       where: { userId, visitedAt: { gte: weekAgo } },
     }),
+    prisma.visit.count({
+      where: { userId, visitedAt: { gte: startOfToday } },
+    }),
   ]);
 
   const visitStreak = computeStreak(allVisits);
   const explorerRank = computeExplorerRank(totalLocations, totalVisits);
 
-  const allSeasonsCovered = await prisma.location.findFirst({
+  // ponytail: sample seasons for badge — upgrade to SQL DISTINCT UNNEST if false negatives hurt.
+  const seasonRows = await prisma.location.findMany({
     where: { userId, ...activeLocationWhere },
     select: { recommendedSeasons: true },
-  }).then(async () => {
-    const allLocs = await prisma.location.findMany({
-      where: { userId, ...activeLocationWhere },
-      select: { recommendedSeasons: true },
-    });
-    const seasonSet = new Set(allLocs.flatMap((l) => l.recommendedSeasons));
-    return ["Spring", "Summer", "Autumn", "Winter"].every((s) => seasonSet.has(s));
+    take: DASHBOARD_SEASON_SAMPLE_MAX,
   });
+  const seasonSet = new Set(seasonRows.flatMap((l) => l.recommendedSeasons));
+  const allSeasonsCovered = ["Spring", "Summer", "Autumn", "Winter"].every((s) =>
+    seasonSet.has(s)
+  );
 
   const tripCount = await prisma.trip.count({ where: { userId } });
+
+  const { hasNightVisit, hasEarlyVisit } = visitHourFlags(
+    allVisits.map((v) => new Date(v.visitedAt))
+  );
 
   const earnedBadges = computeBadges({
     totalLocations,
@@ -232,6 +265,8 @@ export async function getDashboardStats() {
     bucketListVisited,
     hasTrips: tripCount > 0,
     allSeasonsCovered,
+    hasNightVisit,
+    hasEarlyVisit,
   });
 
   return {
@@ -250,6 +285,7 @@ export async function getDashboardStats() {
     earnedBadges,
     weekLocationsAdded,
     weekVisits,
+    todayVisits,
   };
 }
 

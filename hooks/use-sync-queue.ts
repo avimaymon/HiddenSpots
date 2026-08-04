@@ -7,16 +7,37 @@ import {
   failedSyncCount,
   getSyncQueueSummary,
   dropStuckSyncItems,
+  takePhotoBlob,
+  deletePhotoBlob,
+  remapClientLocationId,
+  remapClientTempId,
+  resolveLocationId,
+  resolveMappedId,
   type SyncQueueItem,
 } from "@/lib/offline/db";
+import { track } from "@/lib/analytics";
 import {
-  toggleFavorite,
+  setFavorite,
   createLocation,
   updateLocation,
   deleteLocation,
   addLocationPhoto,
 } from "@/lib/actions/locations";
 import { createVisit } from "@/lib/actions/visits";
+import { saveTrack } from "@/lib/actions/tracks";
+import {
+  addLocationToCollection,
+  removeLocationFromCollection,
+  createCollection,
+  deleteCollection,
+} from "@/lib/actions/collections";
+import {
+  addLocationToTrip,
+  removeLocationFromTrip,
+  reorderTripLocations,
+  createTrip,
+  deleteTrip,
+} from "@/lib/actions/trips";
 
 /**
  * Last-write-wins: queue order is FIFO by createdAt.
@@ -26,29 +47,136 @@ export async function processSyncItem(item: SyncQueueItem) {
   const payload = JSON.parse(item.payload) as Record<string, unknown>;
   switch (item.action) {
     case "favorite":
+      await setFavorite(await resolveLocationId(payload.locationId as string), true);
+      break;
     case "unfavorite":
-      await toggleFavorite(payload.locationId as string);
+      await setFavorite(await resolveLocationId(payload.locationId as string), false);
       break;
-    case "visit":
-      await createVisit(payload);
-      break;
-    case "delete":
-      await deleteLocation(payload.locationId as string);
-      break;
-    case "create":
-      await createLocation(payload);
-      break;
-    case "update": {
-      const { locationId, ...data } = payload as { locationId: string } & Record<string, unknown>;
-      await updateLocation(locationId, data);
+    case "visit": {
+      const locationId = await resolveLocationId(payload.locationId as string);
+      await createVisit({ ...payload, locationId });
       break;
     }
-    case "upload-photo":
-      await addLocationPhoto(
-        payload.locationId as string,
-        payload.url as string,
-        Boolean(payload.isPrimary)
+    case "delete":
+      await deleteLocation(await resolveLocationId(payload.locationId as string));
+      break;
+    case "create": {
+      const clientId =
+        typeof payload.clientId === "string" ? payload.clientId : undefined;
+      const rest = { ...payload };
+      delete rest.clientId;
+      const loc = await createLocation(rest);
+      if (clientId && loc?.id) {
+        await remapClientLocationId(clientId, loc.id);
+      }
+      break;
+    }
+    case "update": {
+      const { locationId, ...data } = payload as { locationId: string } & Record<
+        string,
+        unknown
+      >;
+      await updateLocation(await resolveLocationId(locationId), data);
+      break;
+    }
+    case "upload-photo": {
+      const blobId = payload.blobId as string | undefined;
+      if (blobId) {
+        const row = await takePhotoBlob(blobId);
+        if (!row) throw new Error("Photo blob missing");
+        const locationId = await resolveLocationId(row.locationId);
+        const file = new File([row.data], `offline-${blobId}.jpg`, { type: row.mimeType });
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("locationId", locationId);
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        if (!res.ok) throw new Error("Upload failed");
+        const { url } = (await res.json()) as { url: string };
+        await addLocationPhoto(locationId, url, row.isPrimary);
+        await deletePhotoBlob(blobId);
+      } else if (typeof payload.url === "string" && !payload.url.startsWith("blob:")) {
+        await addLocationPhoto(
+          await resolveLocationId(payload.locationId as string),
+          payload.url,
+          Boolean(payload.isPrimary)
+        );
+      } else {
+        throw new Error("Invalid offline photo payload");
+      }
+      break;
+    }
+    case "save-track": {
+      const trackPayload = { ...payload };
+      if (typeof trackPayload.locationId === "string" && trackPayload.locationId) {
+        trackPayload.locationId = await resolveMappedId(trackPayload.locationId);
+      }
+      await saveTrack(trackPayload);
+      break;
+    }
+    case "collection-add":
+      await addLocationToCollection(
+        await resolveMappedId(payload.collectionId as string),
+        await resolveLocationId(payload.locationId as string)
       );
+      break;
+    case "collection-remove":
+      await removeLocationFromCollection(
+        await resolveMappedId(payload.collectionId as string),
+        await resolveLocationId(payload.locationId as string)
+      );
+      break;
+    case "collection-create": {
+      const clientId =
+        typeof payload.clientId === "string" ? payload.clientId : undefined;
+      const rest = { ...payload };
+      delete rest.clientId;
+      if (typeof rest.parentId === "string") {
+        rest.parentId = await resolveMappedId(rest.parentId);
+      }
+      const col = await createCollection(rest);
+      if (clientId && col?.id) {
+        await remapClientTempId(clientId, col.id);
+      }
+      break;
+    }
+    case "trip-add":
+      await addLocationToTrip(
+        await resolveMappedId(payload.tripId as string),
+        await resolveLocationId(payload.locationId as string)
+      );
+      break;
+    case "trip-remove":
+      await removeLocationFromTrip(
+        await resolveMappedId(payload.tripId as string),
+        await resolveLocationId(payload.locationId as string)
+      );
+      break;
+    case "trip-reorder": {
+      const orderedIds = Array.isArray(payload.orderedIds)
+        ? (payload.orderedIds as string[])
+        : [];
+      await reorderTripLocations(
+        await resolveMappedId(payload.tripId as string),
+        await Promise.all(orderedIds.map((id) => resolveLocationId(id)))
+      );
+      break;
+    }
+    case "trip-create": {
+      const clientId =
+        typeof payload.clientId === "string" ? payload.clientId : undefined;
+      const rest = { ...payload };
+      delete rest.clientId;
+      const trip = await createTrip(rest);
+      if (clientId && trip?.id) {
+        await remapClientTempId(clientId, trip.id);
+      }
+      break;
+    }
+    case "trip-delete":
+      await deleteTrip(await resolveMappedId(payload.tripId as string));
+      break;
+    case "collection-delete":
+      await deleteCollection(await resolveMappedId(payload.collectionId as string));
       break;
     default:
       throw new Error(`Unknown sync action: ${item.action}`);
@@ -73,6 +201,11 @@ export function useSyncQueue() {
     setSyncing(true);
     try {
       const result = await flushSyncQueue(processSyncItem);
+      if (result.failed > 0) {
+        track("sync_failed", { failed: result.failed, synced: result.synced });
+      } else if (result.synced > 0) {
+        track("sync_success", { synced: result.synced });
+      }
       await refreshCounts();
       return result;
     } finally {
@@ -91,7 +224,6 @@ export function useSyncQueue() {
       void flush();
     };
     window.addEventListener("online", onOnline);
-    // Defer: Dexie counts are external store; avoid sync setState-in-effect
     const boot = window.setTimeout(() => {
       void refreshCounts();
       if (navigator.onLine) void flush();

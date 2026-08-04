@@ -42,7 +42,10 @@ export async function GET(req: Request) {
       ok++;
     } catch (e) {
       failed++;
-      errors.push(`${u.id}:${e instanceof Error ? e.message : "error"}`);
+      // Don't echo user ids in cron responses/logs — keep failure shape only.
+      const msg = e instanceof Error ? e.message.slice(0, 120) : "error";
+      errors.push(msg);
+      console.error("[cron/drive-backup] user backup failed", msg);
     }
   }
 

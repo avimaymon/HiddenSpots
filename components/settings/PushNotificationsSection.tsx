@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Bell, BellOff } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -15,7 +16,7 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export function PushNotificationsSection() {
-  // Lazy initial state avoids setting state inside an effect
+  const t = useTranslations("settings");
   const [supported] = useState(
     () => typeof window !== "undefined" && "PushManager" in window && "serviceWorker" in navigator
   );
@@ -38,9 +39,12 @@ export function PushNotificationsSection() {
         await sub?.unsubscribe();
         await fetch("/api/push/subscribe", { method: "DELETE" });
         setSubscribed(false);
-        toast({ title: "Push notifications disabled", variant: "success" });
+        toast({ title: t("pushDisabled"), variant: "success" });
       } else {
-        if (!VAPID_PUBLIC_KEY) { toast({ title: "Push not configured (missing VAPID key)", variant: "destructive" }); return; }
+        if (!VAPID_PUBLIC_KEY) {
+          toast({ title: t("pushNotConfigured"), variant: "destructive" });
+          return;
+        }
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -51,7 +55,7 @@ export function PushNotificationsSection() {
           body: JSON.stringify(sub.toJSON()),
         });
         setSubscribed(true);
-        toast({ title: "Push notifications enabled", variant: "success" });
+        toast({ title: t("pushEnabled"), variant: "success" });
       }
     } catch (e) {
       toast({ title: String(e), variant: "destructive" });
@@ -60,18 +64,16 @@ export function PushNotificationsSection() {
     }
   }
 
-  if (!supported) return (
-    <p className="text-xs text-muted-foreground">Push notifications not supported in this browser.</p>
-  );
+  if (!supported) {
+    return <p className="text-xs text-muted-foreground">{t("pushUnsupported")}</p>;
+  }
 
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 font-bold text-sm">
-        <Bell className="h-4 w-4 text-primary" /> Push Notifications
+        <Bell className="h-4 w-4 text-primary" /> {t("pushTitle")}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Get notified when someone views or interacts with your shared spots.
-      </p>
+      <p className="text-sm text-muted-foreground">{t("pushHint")}</p>
       <Button
         variant={subscribed ? "destructive" : "outline"}
         size="sm"
@@ -79,8 +81,8 @@ export function PushNotificationsSection() {
         onClick={toggle}
         disabled={loading}
       >
-        {subscribed ? <BellOff className="h-4 w-4 mr-1.5" /> : <Bell className="h-4 w-4 mr-1.5" />}
-        {loading ? "Updating…" : subscribed ? "Disable notifications" : "Enable notifications"}
+        {subscribed ? <BellOff className="h-4 w-4 me-1.5" /> : <Bell className="h-4 w-4 me-1.5" />}
+        {loading ? t("pushUpdating") : subscribed ? t("pushDisable") : t("pushEnable")}
       </Button>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Upload, X } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function GeoJsonOverlayButton({ onDataChange, hasData }: Props) {
+  const t = useTranslations("map");
   const fileRef = useRef<HTMLInputElement>(null);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -22,9 +24,9 @@ export function GeoJsonOverlayButton({ onDataChange, hasData }: Props) {
         const parsed = JSON.parse(reader.result as string) as GeoJSON.FeatureCollection;
         if (!parsed.features) throw new Error("Invalid GeoJSON");
         onDataChange(parsed);
-        toast({ title: `Loaded ${parsed.features.length} features`, variant: "success" });
+        toast({ title: t("geojsonLoaded", { count: parsed.features.length }), variant: "success" });
       } catch {
-        toast({ title: "Invalid GeoJSON file", variant: "destructive" });
+        toast({ title: t("geojsonInvalid"), variant: "destructive" });
       }
     };
     reader.readAsText(file);
@@ -40,7 +42,7 @@ export function GeoJsonOverlayButton({ onDataChange, hasData }: Props) {
           size="icon-sm"
           onClick={() => onDataChange(null)}
           className="rounded-xl h-9 w-9"
-          title="Remove GeoJSON overlay"
+          title={t("geojsonRemove")}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -50,7 +52,7 @@ export function GeoJsonOverlayButton({ onDataChange, hasData }: Props) {
           size="icon-sm"
           onClick={() => fileRef.current?.click()}
           className="rounded-xl h-9 w-9"
-          title="Load GeoJSON overlay"
+          title={t("geojsonLoad")}
         >
           <Upload className="h-4 w-4" />
         </Button>

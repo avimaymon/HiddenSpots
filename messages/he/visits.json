@@ -4,6 +4,7 @@
   "logOnMap": "תעד במפה",
   "empty": "עוד לא תועדו ביקורים",
   "emptyHint": "פתח מיקום ולחץ על אייקון הצעדים כדי לתעד ביקור",
+  "loadMore": "טען עוד ביקורים",
   "deleteConfirm": "למחוק את יומן הביקור הזה?",
   "logVisit": "רשום ביקור",
   "visited": "ביקרתי",
@@ -21,6 +22,7 @@
   "addPhoto": "הוסף תמונה",
   "deleted": "ביקור נמחק",
   "logged": "ביקור נרשם",
+  "loggedOffline": "יסונכרן כשיחזור הקשר",
   "logFailed": "רישום הביקור נכשל",
   "saveVisit": "שמור ביקור",
   "imHere": "אני כאן",
@@ -29,5 +31,9 @@
   "imHereFar": "נראה שאת/ה במרחק {distance} — עדיין לרשום?",
   "addPhotoOptional": "הוסף תמונה (אופציונלי)",
   "removePhoto": "הסר תמונה",
-  "photoUploadFailed": "הביקור נרשם, אבל העלאת התמונה נכשלה"
+  "photoUploadFailed": "הביקור נרשם, אבל העלאת התמונה נכשלה",
+  "speechUnsupported": "זיהוי דיבור לא נתמך בדפדפן זה",
+  "voiceNote": "הערת קול",
+  "voiceStop": "עצור הקלטה",
+  "listening": "מקשיב…"
 }

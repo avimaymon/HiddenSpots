@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Bell } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { formatDistanceToNow } from "date-fns";
 type Notification = Awaited<ReturnType<typeof getNotifications>>[0];
 
 export function NotificationBell() {
+  const t = useTranslations("common");
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
 
@@ -39,18 +41,18 @@ export function NotificationBell() {
   return (
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="relative rounded-xl" aria-label="Notifications">
+        <Button variant="ghost" size="icon-sm" className="relative rounded-xl" aria-label={t("notifications")}>
           <Bell className="h-4 w-4" />
           {unread > 0 && (
-            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500 ring-1 ring-background" />
+            <span className="absolute top-1 end-1 h-2 w-2 rounded-full bg-red-500 ring-1 ring-background" />
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
-        <div className="px-3 py-2.5 border-b border-border/50 font-semibold text-sm">Notifications</div>
+        <div className="px-3 py-2.5 border-b border-border/50 font-semibold text-sm">{t("notifications")}</div>
         <div className="max-h-80 overflow-auto">
           {notifs.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No notifications yet</p>
+            <p className="text-sm text-muted-foreground text-center py-8">{t("notificationsEmpty")}</p>
           ) : (
             notifs.map((n) => (
               <div

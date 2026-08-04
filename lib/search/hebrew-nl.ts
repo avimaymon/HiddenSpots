@@ -3,6 +3,13 @@
  * No AI — maps phrases onto the existing location filter fields.
  */
 
+export type NlRegionBBox = {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+};
+
 export type NlSearchFilters = {
   /** Free-text remainder after keywords are stripped */
   text: string;
@@ -19,6 +26,9 @@ export type NlSearchFilters = {
   hasShade?: boolean;
   /** Request GPS-based nearby search (client applies radius) */
   nearby?: boolean;
+  /** Israeli region approximate bbox */
+  region?: NlRegionBBox;
+  regionLabel?: string;
   /** Matched keyword labels for UI chips */
   matched: string[];
 };
@@ -126,6 +136,59 @@ const FLAG_RULES: Rule[] = [
   },
 ];
 
+/** Approximate Israel region boxes for dictionary NL (not cadastral). */
+const REGION_RULES: Array<{
+  patterns: RegExp[];
+  label: string;
+  bbox: NlRegionBBox;
+}> = [
+  {
+    patterns: [/ב?גולן/, /golan/i],
+    label: "גולן",
+    bbox: { minLat: 32.7, maxLat: 33.35, minLng: 35.55, maxLng: 35.95 },
+  },
+  {
+    patterns: [/ב?גליל/, /galilee/i],
+    label: "גליל",
+    bbox: { minLat: 32.65, maxLat: 33.3, minLng: 35.0, maxLng: 35.65 },
+  },
+  {
+    patterns: [/כרמל/, /חיפה/, /carmel/i, /haifa/i],
+    label: "כרמל",
+    bbox: { minLat: 32.55, maxLat: 32.95, minLng: 34.85, maxLng: 35.15 },
+  },
+  {
+    patterns: [/שרון/, /sharon/i],
+    label: "שרון",
+    bbox: { minLat: 32.1, maxLat: 32.55, minLng: 34.75, maxLng: 35.05 },
+  },
+  {
+    patterns: [/מרכז/, /גוש\s*דן/, /center/i],
+    label: "מרכז",
+    bbox: { minLat: 31.85, maxLat: 32.25, minLng: 34.7, maxLng: 35.1 },
+  },
+  {
+    patterns: [/ירושל(?:ים)?/, /יהודה/, /jerusalem/i],
+    label: "ירושלים",
+    bbox: { minLat: 31.55, maxLat: 31.95, minLng: 34.95, maxLng: 35.4 },
+  },
+  {
+    patterns: [/ים\s*המלח/, /מדבר\s*יהודה/, /dead\s*sea/i],
+    label: "ים המלח",
+    bbox: { minLat: 31.0, maxLat: 31.85, minLng: 35.25, maxLng: 35.6 },
+  },
+  {
+    patterns: [/ב?נגב/, /negev/i],
+    label: "נגב",
+    bbox: { minLat: 29.5, maxLat: 31.5, minLng: 34.4, maxLng: 35.35 },
+  },
+  {
+    patterns: [/אילת/, /ערבה/, /eilat/i],
+    label: "אילת",
+    bbox: { minLat: 29.4, maxLat: 30.6, minLng: 34.8, maxLng: 35.25 },
+  },
+];
+
 /** Strip matched spans from the query so leftover text can still title-search. */
 function stripPatterns(text: string, patterns: RegExp[]): string {
   let out = text;
@@ -159,6 +222,16 @@ export function parseHebrewQuery(raw: string): NlSearchFilters {
     }
   }
 
+  for (const region of REGION_RULES) {
+    if (region.patterns.some((p) => p.test(remaining))) {
+      result.region = region.bbox;
+      result.regionLabel = region.label;
+      result.matched.push(region.label);
+      remaining = stripPatterns(remaining, region.patterns);
+      break;
+    }
+  }
+
   // Drop filler Hebrew/English words / lone clitics that only exist for grammar
   remaining = remaining
     .replace(/\b(?:עם|של|את|או|the|a|an|with|for|and|or|to|of)\b/gi, " ")
@@ -184,7 +257,8 @@ export function hasNlFilters(f: NlSearchFilters): boolean {
         f.hasParking ||
         f.hasWater ||
         f.hasShade ||
-        f.nearby
+        f.nearby ||
+        f.region
     )
   );
 }
@@ -194,6 +268,8 @@ export function matchLocationAgainstNl<
   T extends {
     title: string;
     description?: string | null;
+    latitude?: number;
+    longitude?: number;
     isFavorite?: boolean;
     isBucketList?: boolean;
     isVisited?: boolean;
@@ -222,6 +298,19 @@ export function matchLocationAgainstNl<
   if (f.hasParking && !loc.hasParking) return false;
   if (f.hasWater && !loc.hasWater) return false;
   if (f.hasShade && !loc.hasShade) return false;
+  if (f.region) {
+    const lat = loc.latitude;
+    const lng = loc.longitude;
+    if (lat == null || lng == null) return false;
+    if (
+      lat < f.region.minLat ||
+      lat > f.region.maxLat ||
+      lng < f.region.minLng ||
+      lng > f.region.maxLng
+    ) {
+      return false;
+    }
+  }
 
   if (f.text) {
     const q = f.text.toLowerCase();

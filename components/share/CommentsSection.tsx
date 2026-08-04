@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addComment, deleteComment } from "@/lib/actions/comments";
+import { useTranslations } from "next-intl";
+import { addComment, addCommentForShareToken, deleteComment } from "@/lib/actions/comments";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Trash2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { he, enUS } from "date-fns/locale";
+import { useLocale } from "next-intl";
 import { toast } from "@/hooks/use-toast";
 
 type Comment = {
@@ -21,8 +24,9 @@ interface Props {
   locationId: string;
   initialComments: Comment[];
   currentUserId?: string;
-  /** COMMENT+ required to post; VIEW shows read-only */
   canComment?: boolean;
+  /** When set, comments go through token-scoped API (open/targeted share page). */
+  shareToken?: string;
 }
 
 export function CommentsSection({
@@ -30,7 +34,11 @@ export function CommentsSection({
   initialComments,
   currentUserId,
   canComment = false,
+  shareToken,
 }: Props) {
+  const t = useTranslations("sharing");
+  const locale = useLocale();
+  const dfLocale = locale === "he" ? he : enUS;
   const [comments, setComments] = useState(initialComments);
   const [body, setBody] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -42,10 +50,12 @@ export function CommentsSection({
     setBody("");
     startTransition(async () => {
       try {
-        const comment = await addComment(locationId, draft);
+        const comment = shareToken
+          ? await addCommentForShareToken(shareToken, locationId, draft)
+          : await addComment(locationId, draft);
         setComments((prev) => [...prev, comment]);
       } catch {
-        toast({ title: "Cannot comment on this share", variant: "destructive" });
+        toast({ title: t("commentFailed"), variant: "destructive" });
         setBody(draft);
       }
     });
@@ -62,7 +72,7 @@ export function CommentsSection({
     <div className="mt-6 space-y-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
         <MessageSquare className="h-4 w-4" />
-        Comments ({comments.length})
+        {t("commentsHeading", { count: comments.length })}
       </h3>
 
       <div className="space-y-3">
@@ -76,9 +86,12 @@ export function CommentsSection({
             </Avatar>
             <div className="flex-1 bg-muted/40 rounded-xl px-3 py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium">{c.user.name ?? "Explorer"}</span>
+                <span className="font-medium">{c.user.name ?? t("explorerFallback")}</span>
                 <span className="text-xs text-muted-foreground">
-                  {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(c.createdAt), {
+                    addSuffix: true,
+                    locale: dfLocale,
+                  })}
                 </span>
               </div>
               <p className="mt-1 text-muted-foreground whitespace-pre-line">{c.body}</p>
@@ -88,14 +101,14 @@ export function CommentsSection({
                   onClick={() => handleDelete(c.id)}
                   className="mt-1 text-xs text-destructive/60 hover:text-destructive flex items-center gap-1"
                 >
-                  <Trash2 className="h-3 w-3" /> Delete
+                  <Trash2 className="h-3 w-3" /> {t("deleteComment")}
                 </button>
               )}
             </div>
           </div>
         ))}
         {comments.length === 0 && (
-          <p className="text-sm text-muted-foreground">No comments yet.</p>
+          <p className="text-sm text-muted-foreground">{t("noComments")}</p>
         )}
       </div>
 
@@ -104,21 +117,19 @@ export function CommentsSection({
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Add a comment…"
+            placeholder={t("addComment")}
             rows={2}
             className="resize-none"
             maxLength={2000}
           />
           <Button type="submit" size="sm" disabled={isPending || !body.trim()} className="self-end">
-            {isPending ? "Posting…" : "Post"}
+            {isPending ? t("postingComment") : t("postComment")}
           </Button>
         </form>
       )}
 
       {currentUserId && !canComment && (
-        <p className="text-xs text-muted-foreground">
-          This share is view-only. Ask the owner for comment access.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("viewOnlyHint")}</p>
       )}
     </div>
   );

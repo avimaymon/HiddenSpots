@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { locationSchema, type LocationFormData } from "@/lib/validations/schemas";
 import { updateLocation } from "@/lib/actions/locations";
 import { addTagToLocation, removeTagFromLocation } from "@/lib/actions/tags";
+import { enqueueSync, patchCachedLocation } from "@/lib/offline/db";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -28,7 +29,8 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   categories: { id: string; name: string; color: string; icon: string }[];
-  onUpdated?: () => void;
+  /** Called with form data so callers can update UI offline without refetch. */
+  onUpdated?: (data?: LocationFormData) => void;
 }
 
 export function EditLocationDialog({ location, open, onOpenChange, categories, onUpdated }: Props) {
@@ -54,6 +56,19 @@ export function EditLocationDialog({ location, open, onOpenChange, categories, o
   async function onSubmit(data: LocationFormData) {
     setLoading(true);
     try {
+      if (!navigator.onLine) {
+        await enqueueSync("update", { locationId: location.id, ...data });
+        await patchCachedLocation(location.id, {
+          title: data.title,
+          latitude: data.latitude,
+          longitude: data.longitude,
+        });
+        toast({ title: t("updatedToast"), description: t("savedOffline"), variant: "success" });
+        onUpdated?.(data);
+        onOpenChange(false);
+        return;
+      }
+
       await updateLocation(location.id, data);
 
       // Sync tags: add new ones, remove deleted ones
@@ -67,7 +82,7 @@ export function EditLocationDialog({ location, open, onOpenChange, categories, o
       ]);
 
       toast({ title: t("updatedToast"), variant: "success" });
-      onUpdated?.();
+      onUpdated?.(data);
       onOpenChange(false);
     } catch (e) {
       toast({ title: t("updateFailedToast"), description: String(e), variant: "destructive" });
@@ -84,7 +99,11 @@ export function EditLocationDialog({ location, open, onOpenChange, categories, o
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl sm:max-w-2xl overflow-y-auto" style={{ maxHeight: "calc(100dvh - var(--keyboard-height, 0px) - 2rem)" }}>
+      <DialogContent
+        description={t("editTitle")}
+        className="max-w-2xl sm:max-w-2xl overflow-y-auto"
+        style={{ maxHeight: "calc(100dvh - var(--keyboard-height, 0px) - 2rem)" }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -216,6 +235,33 @@ export function EditLocationDialog({ location, open, onOpenChange, categories, o
                   ))}
                 </div>
               </div>
+
+              <div className="space-y-1.5">
+                <Label>{t("fieldTips")}</Label>
+                <Textarea placeholder={t("fieldTipsPlaceholder")} rows={2} {...register("tips")} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>{t("fieldAccessibility")}</Label>
+                <Select
+                  value={(watch("accessibilityLevel" as keyof LocationFormData) as string) ?? ""}
+                  onValueChange={(v) => setValue("accessibilityLevel" as keyof LocationFormData, v as never)}
+                >
+                  <SelectTrigger><SelectValue placeholder={t("fieldAccessibilityPlaceholder")} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="wheelchair">{t("accessWheelchair")}</SelectItem>
+                    <SelectItem value="stroller">{t("accessStroller")}</SelectItem>
+                    <SelectItem value="elderly">{t("accessElderly")}</SelectItem>
+                    <SelectItem value="challenging">{t("accessChallenging")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>{t("fieldHazard")}</Label>
+                <Input placeholder={t("fieldHazardPlaceholder")} {...register("hazardNote")} />
+                <Input type="date" {...register("hazardExpiresAt")} className="mt-1.5" />
+              </div>
             </TabsContent>
 
             {/* TAGS */}
@@ -228,6 +274,30 @@ export function EditLocationDialog({ location, open, onOpenChange, categories, o
                   placeholder={t("fieldTagsPlaceholder")}
                 />
                 <p className="text-xs text-muted-foreground">{t("fieldTagsHint")}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t("fieldVibe")}</Label>
+                <div className="flex flex-wrap gap-2">
+                  {(["calm", "adventurous", "photogenic", "romantic", "family", "solitude", "spiritual", "lively"] as const).map((v) => {
+                    const vibes = (watch("vibes") as string[] | undefined) ?? [];
+                    const active = vibes.includes(v);
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => {
+                          setValue(
+                            "vibes",
+                            active ? vibes.filter((x) => x !== v) : [...vibes, v]
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-full text-xs border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
+                      >
+                        {t(`vibes.${v}`)}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </TabsContent>
 

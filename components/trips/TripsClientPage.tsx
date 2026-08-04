@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@/i18n/navigation";
-import { format } from "date-fns";
 import { Plus, Route, MapPin, Trash2, Loader2, Calendar } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -11,8 +10,17 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { createTrip, deleteTrip } from "@/lib/actions/trips";
+import { dropSyncItemsMatchingClientId, enqueueSync } from "@/lib/offline/db";
+import { isPendingOfflineId } from "@/lib/offline/pending";
+import {
+  ID_REMAP_EVENT,
+  TRIPS_CACHE_KEY,
+  writeEntityCache,
+  type IdRemapDetail,
+} from "@/lib/offline/entity-cache";
 import { toast } from "@/hooks/use-toast";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { formatLocalizedDate } from "@/lib/utils";
 
 type Trip = Awaited<ReturnType<typeof import("@/lib/actions/trips").getTrips>>[number];
 
@@ -23,17 +31,65 @@ interface Props {
 export function TripsClientPage({ initialTrips }: Props) {
   const t = useTranslations("trips");
   const tc = useTranslations("common");
+  const locale = useLocale();
   const [trips, setTrips] = useState(initialTrips);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    writeEntityCache(TRIPS_CACHE_KEY, initialTrips);
+  }, [initialTrips]);
+
+  useEffect(() => {
+    function onRemap(e: Event) {
+      const { clientId, serverId } = (e as CustomEvent<IdRemapDetail>).detail;
+      setTrips((prev) => {
+        const next = prev.map((trip) =>
+          trip.id === clientId ? { ...trip, id: serverId } : trip
+        );
+        writeEntityCache(TRIPS_CACHE_KEY, next);
+        return next;
+      });
+    }
+    window.addEventListener(ID_REMAP_EVENT, onRemap);
+    return () => window.removeEventListener(ID_REMAP_EVENT, onRemap);
+  }, []);
+
   async function handleCreate() {
     if (!name.trim()) return;
     setLoading(true);
     try {
+      if (!navigator.onLine) {
+        const clientId = crypto.randomUUID();
+        await enqueueSync("trip-create", { name: name.trim(), clientId });
+        const now = new Date();
+        const optimistic = {
+          id: clientId,
+          name: name.trim(),
+          description: null,
+          color: "#f59e0b",
+          privacy: "PRIVATE" as const,
+          startDate: null,
+          endDate: null,
+          userId: "",
+          createdAt: now,
+          updatedAt: now,
+          _count: { locations: 0 },
+          locations: [] as Trip["locations"],
+        } as Trip;
+        const next = [optimistic, ...trips];
+        setTrips(next);
+        writeEntityCache(TRIPS_CACHE_KEY, next);
+        setOpen(false);
+        setName("");
+        toast({ title: t("created"), description: t("goMode.offlineQueued"), variant: "success" });
+        return;
+      }
       const trip = await createTrip({ name: name.trim() });
-      setTrips((prev) => [{ ...trip, _count: { locations: 0 }, locations: [] }, ...prev]);
+      const next = [{ ...trip, _count: { locations: 0 }, locations: [] as Trip["locations"] }, ...trips];
+      setTrips(next);
+      writeEntityCache(TRIPS_CACHE_KEY, next);
       setOpen(false);
       setName("");
       toast({ title: t("created"), variant: "success" });
@@ -46,6 +102,22 @@ export function TripsClientPage({ initialTrips }: Props) {
 
   async function handleDelete(id: string) {
     if (!confirm(t("deleteConfirm"))) return;
+    if (isPendingOfflineId(id)) {
+      await dropSyncItemsMatchingClientId(id);
+      setTrips((prev) => prev.filter((x) => x.id !== id));
+      writeEntityCache(
+        TRIPS_CACHE_KEY,
+        trips.filter((x) => x.id !== id)
+      );
+      return;
+    }
+    if (!navigator.onLine) {
+      await enqueueSync("trip-delete", { tripId: id });
+      const next = trips.filter((x) => x.id !== id);
+      setTrips(next);
+      writeEntityCache(TRIPS_CACHE_KEY, next);
+      return;
+    }
     await deleteTrip(id);
     setTrips((prev) => prev.filter((x) => x.id !== id));
   }
@@ -72,7 +144,9 @@ export function TripsClientPage({ initialTrips }: Props) {
           </div>
         ) : (
           <div className="space-y-3">
-            {trips.map((trip) => (
+            {trips.map((trip) => {
+              const pending = isPendingOfflineId(trip.id);
+              return (
               <div
                 key={trip.id}
                 className="group rounded-2xl border border-border/50 bg-card p-4 hover:border-primary/25 hover:shadow-md transition-all"
@@ -91,10 +165,15 @@ export function TripsClientPage({ initialTrips }: Props) {
                         <Badge variant="secondary" className="text-[10px]">
                           {trip._count.locations} {t("stops")}
                         </Badge>
+                        {pending && (
+                          <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-300">
+                            {t("pendingSync")}
+                          </Badge>
+                        )}
                         {trip.startDate && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            {format(new Date(trip.startDate), "MMM d, yyyy")}
+                            {formatLocalizedDate(trip.startDate, "MMM d, yyyy", locale)}
                           </span>
                         )}
                       </div>
@@ -110,9 +189,21 @@ export function TripsClientPage({ initialTrips }: Props) {
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <Button variant="outline" size="sm" className="rounded-xl" asChild>
-                      <Link href={`/trips/${trip.id}`}>{t("view")}</Link>
-                    </Button>
+                    {pending ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl"
+                        disabled
+                        title={t("pendingSyncHint")}
+                      >
+                        {t("pendingSync")}
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" className="rounded-xl" asChild>
+                        <Link href={`/trips/${trip.id}`}>{t("view")}</Link>
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" className="rounded-xl" asChild>
                       <Link href="/app">
                         <MapPin className="h-3.5 w-3.5" />
@@ -129,7 +220,8 @@ export function TripsClientPage({ initialTrips }: Props) {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

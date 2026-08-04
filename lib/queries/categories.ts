@@ -8,6 +8,7 @@ export function getCategoriesForUser(userId: string) {
         where: { OR: [{ userId }, { isSystem: true }] },
         select: { id: true, name: true, color: true, icon: true },
         orderBy: { name: "asc" },
+        take: 200,
       }),
     [`categories-${userId}`],
     { revalidate: 300, tags: [`categories-${userId}`] }

@@ -2,9 +2,10 @@
 
 import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Map, { NavigationControl, FullscreenControl, Marker, Popup, Source, Layer } from "react-map-gl/mapbox";
 import type { MapRef, MapMouseEvent } from "react-map-gl/mapbox";
+import { circle as turfCircle } from "@turf/turf";
 import { useTranslations } from "next-intl";
 import { useSettingsStore } from "@/lib/store/settings";
 import { useMapStore } from "@/lib/store/map";
@@ -18,8 +19,12 @@ export default function MapboxProvider({
   selectedId,
   onLocationClick,
   onMapClick,
+  onBoundsChange,
   isAddingLocation,
   measureMode,
+  measurePoints = [],
+  radiusCenter,
+  radiusKm,
   showClusters = true,
   className,
   tripPolyline,
@@ -33,6 +38,34 @@ export default function MapboxProvider({
   const [popupLocation, setPopupLocation] = useState<(typeof locations)[0] | null>(null);
   const [terrain3D, setTerrain3D] = useState(false);
   const [showContours, setShowContours] = useState(false);
+
+  const radiusGeojson = useMemo(() => {
+    if (!radiusCenter || radiusKm == null || radiusKm <= 0) return null;
+    return turfCircle([radiusCenter.lng, radiusCenter.lat], radiusKm, {
+      steps: 64,
+      units: "kilometers",
+    });
+  }, [radiusCenter, radiusKm]);
+
+  const measureGeojson = useMemo((): GeoJSON.FeatureCollection | null => {
+    if (measurePoints.length < 1) return null;
+    const features: GeoJSON.Feature[] = measurePoints.map((p, i) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+      properties: { i },
+    }));
+    if (measurePoints.length >= 2) {
+      features.unshift({
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: measurePoints.map((p) => [p.lng, p.lat]),
+        },
+        properties: {},
+      });
+    }
+    return { type: "FeatureCollection", features };
+  }, [measurePoints]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -131,6 +164,16 @@ export default function MapboxProvider({
         ref={mapRef}
         {...viewState}
         onMove={(e) => setViewState(e.viewState)}
+        onMoveEnd={(e) => {
+          const b = e.target.getBounds();
+          if (!b) return;
+          onBoundsChange?.({
+            west: b.getWest(),
+            south: b.getSouth(),
+            east: b.getEast(),
+            north: b.getNorth(),
+          });
+        }}
         mapboxAccessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN}
         mapStyle={`mapbox://styles/mapbox/${mapStyle}`}
         cursor={isAddingLocation ? "crosshair" : "grab"}
@@ -188,6 +231,47 @@ export default function MapboxProvider({
               type="fill"
               paint={{ "fill-color": "#3b82f6", "fill-opacity": 0.1 }}
               filter={["==", ["geometry-type"], "Polygon"]}
+            />
+          </Source>
+        )}
+
+        {radiusGeojson && (
+          <Source id="radius-circle" type="geojson" data={radiusGeojson}>
+            <Layer
+              id="radius-circle-fill"
+              type="fill"
+              paint={{ "fill-color": "#2563eb", "fill-opacity": 0.08 }}
+            />
+            <Layer
+              id="radius-circle-line"
+              type="line"
+              paint={{ "line-color": "#2563eb", "line-width": 2 }}
+            />
+          </Source>
+        )}
+
+        {measureGeojson && (
+          <Source id="measure-line" type="geojson" data={measureGeojson}>
+            <Layer
+              id="measure-line-layer"
+              type="line"
+              filter={["==", ["geometry-type"], "LineString"]}
+              paint={{
+                "line-color": "#f59e0b",
+                "line-width": 3,
+                "line-dasharray": [2, 1],
+              }}
+            />
+            <Layer
+              id="measure-points-layer"
+              type="circle"
+              filter={["==", ["geometry-type"], "Point"]}
+              paint={{
+                "circle-radius": 6,
+                "circle-color": "#f59e0b",
+                "circle-stroke-width": 2,
+                "circle-stroke-color": "#fff",
+              }}
             />
           </Source>
         )}
@@ -322,7 +406,7 @@ export default function MapboxProvider({
             "h-9 w-9 rounded-xl border border-border/60 bg-background/90 backdrop-blur-sm shadow-sm flex items-center justify-center text-sm transition-colors",
             terrain3D ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
           )}
-          title="3D Terrain"
+          title={t("terrain3d")}
         >
           ⛰️
         </button>
@@ -332,7 +416,7 @@ export default function MapboxProvider({
             "h-9 w-9 rounded-xl border border-border/60 bg-background/90 backdrop-blur-sm shadow-sm flex items-center justify-center text-sm transition-colors",
             showContours ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
           )}
-          title="Contour lines"
+          title={t("contours")}
         >
           〰️
         </button>

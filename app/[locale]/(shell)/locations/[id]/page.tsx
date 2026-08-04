@@ -49,6 +49,7 @@ export default async function LocationDetailPage({ params }: Props) {
     prisma.category.findMany({
       where: { OR: [{ userId: session!.user!.id }, { isSystem: true }] },
       orderBy: { name: "asc" },
+      take: 200,
     }),
     prisma.visit.groupBy({
       by: ["userId"],

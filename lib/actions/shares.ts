@@ -5,7 +5,19 @@ import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
 import { revalidateAppPaths } from "@/lib/revalidate";
 import { shareSchema } from "@/lib/validations/schemas";
-import { fuzzyCoords } from "@/lib/utils";
+import {
+  assertOwnsCollection,
+  assertOwnsLocation,
+  assertOwnsTrip,
+  clampOpenSharePermission,
+} from "@/lib/permissions/resource-access";
+import { writeNotification } from "@/lib/notifications/write";
+import { applyPrivacy } from "@/lib/shares/apply-privacy";
+import type { Permission } from "@prisma/client";
+import { headers } from "next/headers";
+
+/** Cap gallery size on public location shares (bandwidth + over-share). */
+const SHARE_LOCATION_PHOTOS_MAX = 12;
 
 async function requireAuth() {
   const session = await auth();
@@ -15,7 +27,18 @@ async function requireAuth() {
 
 export async function createShare(data: unknown) {
   const userId = await requireAuth();
+  const { ok } = await rateLimit(`share-create:${userId}`, 30, 60_000, {
+    failClosed: true,
+  });
+  if (!ok) throw new Error("RATE_LIMITED");
   const validated = shareSchema.parse(data);
+
+  if (!validated.locationId && !validated.collectionId && !validated.tripId) {
+    throw new Error("Missing resource");
+  }
+  if (validated.locationId) await assertOwnsLocation(userId, validated.locationId);
+  if (validated.collectionId) await assertOwnsCollection(userId, validated.collectionId);
+  if (validated.tripId) await assertOwnsTrip(userId, validated.tripId);
 
   let sharedWithId: string | undefined;
   if (validated.sharedWithEmail) {
@@ -26,11 +49,16 @@ export async function createShare(data: unknown) {
     sharedWithId = target.id;
   }
 
+  const permission = clampOpenSharePermission(
+    validated.permission as Permission,
+    sharedWithId
+  );
+
   const share = await prisma.share.create({
     data: {
       sharedById: userId,
       sharedWithId,
-      permission: validated.permission,
+      permission,
       locationId: validated.locationId,
       collectionId: validated.collectionId,
       tripId: validated.tripId,
@@ -38,10 +66,29 @@ export async function createShare(data: unknown) {
     },
   });
 
+  if (sharedWithId) {
+    const href = share.publicToken ? `/share/${share.publicToken}` : "/app";
+    await writeNotification(
+      sharedWithId,
+      "share",
+      "שיתוף חדש ב-HiddenSpots",
+      "מישהו שיתף איתך מקום או אוסף",
+      href
+    ).catch(() => undefined);
+  }
+
   return share;
 }
 
 export async function recordShareView(token: string) {
+  if (!token || token.length > 128) return;
+  const h = await headers();
+  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anon";
+  const { ok } = await rateLimit(`share-view:${token}:${ip}`, 30, 60_000, {
+    failClosed: true,
+  });
+  if (!ok) return;
+
   await prisma.share.updateMany({
     where: { publicToken: token },
     data: { viewCount: { increment: 1 } },
@@ -49,7 +96,7 @@ export async function recordShareView(token: string) {
 }
 
 export async function getShareByToken(token: string) {
-  const { ok } = await rateLimit(`share:${token}`, 60, 60_000);
+  const { ok } = await rateLimit(`share:${token}`, 60, 60_000, { failClosed: true });
   if (!ok) return null;
 
   const share = await prisma.share.findUnique({
@@ -58,13 +105,18 @@ export async function getShareByToken(token: string) {
       location: {
         include: {
           category: true,
-          photos: true,
+          photos: {
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            take: SHARE_LOCATION_PHOTOS_MAX,
+          },
           tags: { include: { tag: true } },
         },
       },
       collection: {
         include: {
           locations: {
+            where: { location: { deletedAt: null } },
+            take: 500,
             include: {
               location: {
                 include: {
@@ -79,7 +131,9 @@ export async function getShareByToken(token: string) {
       trip: {
         include: {
           locations: {
+            where: { location: { deletedAt: null } },
             orderBy: { sortOrder: "asc" },
+            take: 200,
             include: {
               location: {
                 include: { category: true },
@@ -93,7 +147,9 @@ export async function getShareByToken(token: string) {
 
   if (!share) return null;
   if (share.expiresAt && share.expiresAt < new Date()) return null;
-  return applyPrivacy(share);
+  // Soft-deleted primary location — treat share as gone
+  if (share.locationId && share.location?.deletedAt) return null;
+  return applyPrivacy(share, token);
 }
 
 export async function listMyShares() {
@@ -106,50 +162,8 @@ export async function listMyShares() {
       trip: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "desc" },
+    take: 500,
   });
-}
-
-// ponytail: any-typed internally; return cast preserves caller inference
-function applyPrivacy<T>(share: T): T {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const s = share as any;
-  if (s.location) {
-    const loc = s.location;
-    if (loc.privacy === "SECRET" || loc.fuzzyCoordinates) {
-      const fuzzed = fuzzyCoords(loc.latitude, loc.longitude, loc.fuzzyRadiusMeters ?? 500);
-      return { ...s, location: { ...loc, latitude: fuzzed.latitude, longitude: fuzzed.longitude, address: null } } as T;
-    }
-  }
-
-  if (s.collection) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updatedLocations = s.collection.locations.map((cl: any) => {
-      const loc = cl.location;
-      if (!loc) return cl;
-      if (loc.privacy === "SECRET" || loc.fuzzyCoordinates) {
-        const fuzzed = fuzzyCoords(loc.latitude, loc.longitude, 500);
-        return { ...cl, location: { ...loc, latitude: fuzzed.latitude, longitude: fuzzed.longitude } };
-      }
-      return cl;
-    });
-    return { ...s, collection: { ...s.collection, locations: updatedLocations } } as T;
-  }
-
-  if (s.trip) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updatedStops = s.trip.locations.map((stop: any) => {
-      const loc = stop.location;
-      if (!loc) return stop;
-      if (loc.privacy === "SECRET" || loc.fuzzyCoordinates) {
-        const fuzzed = fuzzyCoords(loc.latitude, loc.longitude, 500);
-        return { ...stop, location: { ...loc, latitude: fuzzed.latitude, longitude: fuzzed.longitude } };
-      }
-      return stop;
-    });
-    return { ...s, trip: { ...s.trip, locations: updatedStops } } as T;
-  }
-
-  return share;
 }
 
 export async function revokeShare(shareId: string) {

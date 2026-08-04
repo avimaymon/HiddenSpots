@@ -4,6 +4,7 @@
   "logOnMap": "Log on Map",
   "empty": "No visits logged yet",
   "emptyHint": "Open a spot and tap the footprints icon to record a visit",
+  "loadMore": "Load more visits",
   "deleteConfirm": "Delete this visit log?",
   "logVisit": "Log visit",
   "visited": "Visited",
@@ -21,6 +22,7 @@
   "addPhoto": "Add photo",
   "deleted": "Visit deleted",
   "logged": "Visit logged",
+  "loggedOffline": "Will sync when you're back online",
   "logFailed": "Could not log visit",
   "saveVisit": "Save visit",
   "imHere": "I'm here",
@@ -29,5 +31,9 @@
   "imHereFar": "You seem {distance} away — log anyway?",
   "addPhotoOptional": "Add photo (optional)",
   "removePhoto": "Remove photo",
-  "photoUploadFailed": "Visit logged, but photo upload failed"
+  "photoUploadFailed": "Visit logged, but photo upload failed",
+  "speechUnsupported": "Speech recognition not supported",
+  "voiceNote": "Voice note",
+  "voiceStop": "Stop recording",
+  "listening": "Listening…"
 }

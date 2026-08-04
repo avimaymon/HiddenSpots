@@ -39,12 +39,18 @@ export function ImportSection() {
     if (!preview?.locations.length) return;
     setImporting(true);
     try {
-      const { created, skipped, errors } = await importLocations(preview.locations);
+      const { created, skipped, errors, truncated, processed, received } =
+        await importLocations(preview.locations);
       toast({
         title: t("importedCount", { count: created }),
         description: [
           skipped > 0 ? t("duplicatesSkipped", { count: skipped }) : null,
-          errors.length ? t("errorsCount", { count: errors.length }) : null,
+          truncated ? t("truncatedHint", { processed, received }) : null,
+          errors.filter((e) => !e.startsWith("TRUNCATED:")).length
+            ? t("errorsCount", {
+                count: errors.filter((e) => !e.startsWith("TRUNCATED:")).length,
+              })
+            : null,
         ].filter(Boolean).join(" · ") || undefined,
         variant: created > 0 ? "success" : "destructive",
       });
@@ -54,7 +60,12 @@ export function ImportSection() {
         if (inputRef.current) inputRef.current.value = "";
       }
     } catch (e) {
-      toast({ title: t("importFailed"), description: String(e), variant: "destructive" });
+      const msg = String(e);
+      toast({
+        title: msg.includes("RATE_LIMITED") ? t("rateLimited") : t("importFailed"),
+        description: msg.includes("RATE_LIMITED") ? undefined : msg,
+        variant: "destructive",
+      });
     } finally {
       setImporting(false);
     }
@@ -90,12 +101,18 @@ export function ImportSection() {
     if (!myMapsUrl.trim()) return;
     setImporting(true);
     try {
-      const { created, skipped, errors } = await importMyMapsUrl(myMapsUrl.trim());
+      const { created, skipped, errors, truncated, processed, received } =
+        await importMyMapsUrl(myMapsUrl.trim());
       toast({
         title: t("importedCount", { count: created }),
         description: [
           skipped > 0 ? t("duplicatesSkipped", { count: skipped }) : null,
-          errors.length ? t("errorsCount", { count: errors.length }) : null,
+          truncated ? t("truncatedHint", { processed, received }) : null,
+          errors.filter((e) => !e.startsWith("TRUNCATED:")).length
+            ? t("errorsCount", {
+                count: errors.filter((e) => !e.startsWith("TRUNCATED:")).length,
+              })
+            : null,
         ].filter(Boolean).join(" · ") || undefined,
         variant: created > 0 ? "success" : "destructive",
       });
@@ -105,7 +122,12 @@ export function ImportSection() {
         setPreview(null);
       }
     } catch (e) {
-      toast({ title: t("importFailed"), description: String(e), variant: "destructive" });
+      const msg = String(e);
+      toast({
+        title: msg.includes("RATE_LIMITED") ? t("rateLimited") : t("importFailed"),
+        description: msg.includes("RATE_LIMITED") ? undefined : msg,
+        variant: "destructive",
+      });
     } finally {
       setImporting(false);
     }

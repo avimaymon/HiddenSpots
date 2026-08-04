@@ -5,7 +5,6 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 import { ThemeProvider } from "@/components/shared/ThemeProvider";
-import { QueryProvider } from "@/components/shared/QueryProvider";
 import { Toaster } from "@/components/ui/toaster";
 import { ServiceWorkerRegister } from "@/components/shared/ServiceWorkerRegister";
 import { ClientErrorBoundary } from "@/components/shared/ClientErrorBoundary";
@@ -82,15 +81,13 @@ export default async function RootLayout({
       >
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider>
-            <QueryProvider>
-              <SkipToContent />
-              <ClientErrorBoundary>{children}</ClientErrorBoundary>
-              <Toaster />
-              <ServiceWorkerRegister />
-              <Suspense fallback={null}>
-                <Analytics />
-              </Suspense>
-            </QueryProvider>
+            <SkipToContent />
+            <ClientErrorBoundary>{children}</ClientErrorBoundary>
+            <Toaster />
+            <ServiceWorkerRegister />
+            <Suspense fallback={null}>
+              <Analytics />
+            </Suspense>
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

@@ -8,10 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { QuickNavButtons } from "@/components/shared/QuickNavButtons";
 import { NavigateShareDialog } from "@/components/shared/NavigateShareDialog";
-import { format } from "date-fns";
 import { motion, useMotionValue, useTransform, animate } from "motion/react";
 import { toggleFavorite } from "@/lib/actions/locations";
+import { createVisit } from "@/lib/actions/visits";
+import { enqueueSync } from "@/lib/offline/db";
 import { toast } from "@/hooks/use-toast";
+import { useLocale, useTranslations } from "next-intl";
+import { formatLocalizedDate } from "@/lib/utils";
 
 type LocationRow = {
   id: string;
@@ -36,6 +39,9 @@ interface Props {
 }
 
 function LocationCardInner({ location, view, onClick }: Props) {
+  const t = useTranslations("locations");
+  const tv = useTranslations("visits");
+  const locale = useLocale();
   const photo = location.photos[0];
   const [shareOpen, setShareOpen] = useState(false);
   const [swipeHint, setSwipeHint] = useState<"fav" | "log" | null>(null);
@@ -50,12 +56,33 @@ function LocationCardInner({ location, view, onClick }: Props) {
   async function handleSwipeEnd() {
     const xVal = x.get();
     if (xVal > 60) {
-      // Right swipe = favorite
-      await toggleFavorite(location.id);
-      toast({ title: location.isFavorite ? "Removed from favorites" : "Added to favorites", variant: "success" });
+      const nextFav = !location.isFavorite;
+      if (!navigator.onLine) {
+        await enqueueSync(nextFav ? "favorite" : "unfavorite", { locationId: location.id });
+        toast({ title: t("savedOffline"), variant: "success" });
+      } else {
+        await toggleFavorite(location.id);
+        toast({
+          title: location.isFavorite ? t("favoriteRemoved") : t("favoriteAdded"),
+          variant: "success",
+        });
+      }
     } else if (xVal < -60) {
-      // Left swipe = open log visit (navigate to location detail)
-      toast({ title: "Opening visit log…" });
+      const visitPayload = {
+        locationId: location.id,
+        visitedAt: new Date().toISOString(),
+      };
+      try {
+        if (!navigator.onLine) {
+          await enqueueSync("visit", visitPayload);
+          toast({ title: tv("logged"), description: t("savedOffline"), variant: "success" });
+        } else {
+          await createVisit(visitPayload);
+          toast({ title: tv("logged"), description: t("visitLoggedDesc"), variant: "success" });
+        }
+      } catch {
+        toast({ title: t("visitFailed"), variant: "destructive" });
+      }
     }
     animate(x, 0, { type: "spring", stiffness: 400, damping: 30 });
     setSwipeHint(null);
@@ -131,7 +158,7 @@ function LocationCardInner({ location, view, onClick }: Props) {
           </Link>
           <div className="flex flex-col items-end gap-1.5 shrink-0">
             <span className="text-[10px] sm:text-xs text-muted-foreground tabular-nums">
-              {format(new Date(location.createdAt), "MMM d")}
+              {formatLocalizedDate(location.createdAt, "MMM d", locale)}
             </span>
             <QuickNavButtons location={coords} onMore={() => setShareOpen(true)} />
           </div>
@@ -203,7 +230,7 @@ function LocationCardInner({ location, view, onClick }: Props) {
               {location.isVisited && (
                 <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-medium">
                   <Eye className="h-3 w-3" />
-                  {location.visitCount} visits
+                  {t("visitCountShort", { count: location.visitCount })}
                 </div>
               )}
             </div>
@@ -217,7 +244,7 @@ function LocationCardInner({ location, view, onClick }: Props) {
             size="icon-sm"
             className="rounded-lg shrink-0"
             onClick={() => setShareOpen(true)}
-            title="Navigate & Share"
+            title={t("actionNavigateShare")}
           >
             <Navigation className="h-3.5 w-3.5" />
           </Button>

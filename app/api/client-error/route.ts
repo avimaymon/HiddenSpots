@@ -3,7 +3,9 @@ import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anon";
-  const { ok } = await rateLimit(`client-error:${ip}`, 30, 60_000);
+  const { ok } = await rateLimit(`client-error:${ip}`, 30, 60_000, {
+    failClosed: true,
+  });
   if (!ok) return NextResponse.json({ ok: false }, { status: 429 });
 
   try {

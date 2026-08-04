@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Camera, CheckCircle2, Loader2, X } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { createVisit, addVisitPhoto } from "@/lib/actions/visits";
+import { enqueueSync, storePhotoBlob } from "@/lib/offline/db";
 import { toast } from "@/hooks/use-toast";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { getDistanceBetween, formatDistance, cn } from "@/lib/utils";
@@ -40,6 +41,8 @@ export function ImHereButton({
   warnBeyondM = 500,
 }: Props) {
   const t = useTranslations("visits");
+  const tl = useTranslations("locations");
+  const locale = useLocale();
   const [isPending, startTransition] = useTransition();
   const [done, setDone] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -62,10 +65,29 @@ export function ImHereButton({
     startTransition(async () => {
       try {
         if (lat == null || lng == null) await refresh();
-        const visit = await createVisit({
+        const visitPayload = {
           locationId,
           visitedAt: new Date().toISOString(),
-        });
+        };
+
+        if (!navigator.onLine) {
+          await enqueueSync("visit", visitPayload);
+          // ponytail: photo attaches to location gallery (visit id unknown until sync)
+          if (photoFile) {
+            await storePhotoBlob({ locationId, file: photoFile, isPrimary: false });
+          }
+          setDone(true);
+          toast({
+            title: t("logged"),
+            description: photoFile ? tl("photoQueued") : t("loggedOffline"),
+            variant: "success",
+          });
+          onPickPhoto(null);
+          onLogged?.();
+          return;
+        }
+
+        const visit = await createVisit(visitPayload);
         if (photoFile) {
           try {
             const url = await uploadPhoto(photoFile, locationId);
@@ -78,7 +100,7 @@ export function ImHereButton({
         track("visit", { method: "im_here", withPhoto: Boolean(photoFile) });
         toast({
           title: t("logged"),
-          description: dist != null ? formatDistance(dist) : undefined,
+          description: dist != null ? formatDistance(dist, locale) : undefined,
           variant: "success",
         });
         onPickPhoto(null);
@@ -142,7 +164,7 @@ export function ImHereButton({
       </div>
       {dist != null && dist > warnBeyondM && !done && (
         <p className="text-[11px] text-amber-600 text-center">
-          {t("imHereFar", { distance: formatDistance(dist) })}
+          {t("imHereFar", { distance: formatDistance(dist, locale) })}
         </p>
       )}
     </div>

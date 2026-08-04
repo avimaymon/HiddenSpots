@@ -20,6 +20,8 @@ const NAMESPACES = [
   "pwa",
   "legal",
   "command",
+  "whatsnew",
+  "yearReview",
 ] as const;
 
 async function loadMessages(locale: string) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type LocationCoords,
@@ -17,6 +19,7 @@ interface Props {
 
 /** Compact Waze + Google buttons for popups and cards */
 export function QuickNavButtons({ location, size = "sm", className, onMore }: Props) {
+  const t = useTranslations("sharing");
   const btnClass =
     size === "sm"
       ? "h-7 px-2 text-[10px] gap-1"
@@ -29,8 +32,9 @@ export function QuickNavButtons({ location, size = "sm", className, onMore }: Pr
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
+        aria-label={t("openInWaze")}
         className={cn(
-          "inline-flex items-center rounded-lg font-bold transition-all hover:opacity-90 active:scale-95",
+          "inline-flex items-center rounded-lg font-bold transition-all hover:opacity-90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           btnClass,
           "bg-[#33CCFF]/15 text-[#0099CC] border border-[#33CCFF]/30"
         )}
@@ -42,8 +46,9 @@ export function QuickNavButtons({ location, size = "sm", className, onMore }: Pr
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
+        aria-label={t("openInGoogle")}
         className={cn(
-          "inline-flex items-center rounded-lg font-bold transition-all hover:opacity-90 active:scale-95",
+          "inline-flex items-center rounded-lg font-bold transition-all hover:opacity-90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           btnClass,
           "bg-[#4285F4]/15 text-[#4285F4] border border-[#4285F4]/30"
         )}
@@ -56,13 +61,14 @@ export function QuickNavButtons({ location, size = "sm", className, onMore }: Pr
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "inline-flex items-center rounded-lg font-semibold transition-all hover:opacity-90 active:scale-95",
+          "inline-flex items-center rounded-lg font-semibold transition-all hover:opacity-90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           btnClass,
           "bg-muted/80 text-muted-foreground border border-border/60"
         )}
-        title="View on map"
+        title={t("viewOnMap")}
+        aria-label={t("viewOnMap")}
       >
-        📍
+        <MapPin className="h-3 w-3" aria-hidden />
       </a>
       {onMore && (
         <button
@@ -71,8 +77,9 @@ export function QuickNavButtons({ location, size = "sm", className, onMore }: Pr
             e.stopPropagation();
             onMore();
           }}
+          aria-label={t("moreOptions")}
           className={cn(
-            "inline-flex items-center rounded-lg font-semibold transition-all hover:bg-muted active:scale-95",
+            "inline-flex items-center rounded-lg font-semibold transition-all hover:bg-muted active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             btnClass,
             "text-muted-foreground border border-border/60"
           )}

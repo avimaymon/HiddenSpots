@@ -20,6 +20,8 @@ export default async function MapPage() {
         collections={data.collections}
         categories={data.categories}
         collectionMembers={data.collectionMembers}
+        atlasTruncated={data.truncated}
+        atlasTotalCount={data.totalCount}
       />
     </Suspense>
   );

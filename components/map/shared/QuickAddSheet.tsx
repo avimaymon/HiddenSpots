@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { createLocation, addLocationPhoto, findNearbyDuplicates } from "@/lib/actions/locations";
+import { uploadLocationPhotoFile } from "@/components/locations/PhotoUpload";
+import { cacheLocationsForOffline, enqueueSync } from "@/lib/offline/db";
 import { toast } from "@/hooks/use-toast";
 import { useTranslations } from "next-intl";
 import { SparkBurst } from "@/components/effects/SparkBurst";
@@ -36,39 +38,85 @@ export function QuickAddSheet({ open, onOpenChange, coords, categories, onCreate
   const tc = useTranslations("common");
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [spark, setSpark] = useState(false);
 
   function reset() {
     setTitle("");
     setCategoryId("");
-    setPhotoUrl(null);
+    setPhotoFile(null);
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoPreview(null);
     setSpark(false);
   }
 
-  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setPhotoUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      if (res.ok) {
-        const { url } = await res.json();
-        setPhotoUrl(url);
-      }
-    } finally {
-      setPhotoUploading(false);
-    }
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
   }
 
   async function handleSave() {
     if (!title.trim() || !coords) return;
     setSaving(true);
     try {
+      const payload = {
+        title: title.trim(),
+        latitude: coords.lat,
+        longitude: coords.lng,
+        privacy: "PRIVATE" as const,
+        isFavorite: false,
+        isBucketList: false,
+        fuzzyCoordinates: false,
+        recommendedSeasons: [] as string[],
+        externalLinks: [] as string[],
+        categoryId: categoryId || undefined,
+      };
+
+      if (!navigator.onLine) {
+        const clientId = crypto.randomUUID();
+        await enqueueSync("create", { ...payload, clientId });
+        const cat = categories.find((c) => c.id === categoryId);
+        const optimistic = {
+          id: clientId,
+          title: payload.title,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          isFavorite: false,
+          isVisited: false,
+          coverPhotoUrl: null as string | null,
+          categoryId: categoryId || null,
+          category: cat
+            ? { color: cat.color, icon: "map-pin", name: cat.name }
+            : null,
+          photos: [] as { url: string }[],
+        };
+        await cacheLocationsForOffline([
+          {
+            id: optimistic.id,
+            title: optimistic.title,
+            latitude: optimistic.latitude,
+            longitude: optimistic.longitude,
+            category: optimistic.category,
+            isFavorite: false,
+            isVisited: false,
+            coverPhotoUrl: null,
+          },
+        ]);
+        onCreated(optimistic);
+        setSpark(true);
+        toast({ title: t("savedOffline"), variant: "success" });
+        window.setTimeout(() => {
+          reset();
+          onOpenChange(false);
+        }, 420);
+        return;
+      }
+
       const dups = await findNearbyDuplicates({
         title: title.trim(),
         latitude: coords.lat,
@@ -81,19 +129,12 @@ export function QuickAddSheet({ open, onOpenChange, coords, categories, onCreate
           return;
         }
       }
-      const loc = await createLocation({
-        title: title.trim(),
-        latitude: coords.lat,
-        longitude: coords.lng,
-        privacy: "PRIVATE",
-        isFavorite: false,
-        isBucketList: false,
-        fuzzyCoordinates: false,
-        recommendedSeasons: [],
-        externalLinks: [],
-        categoryId: categoryId || undefined,
-      });
-      if (photoUrl) await addLocationPhoto(loc.id, photoUrl, true);
+      const loc = await createLocation(payload);
+      let coverUrl: string | null = null;
+      if (photoFile) {
+        coverUrl = await uploadLocationPhotoFile(photoFile, loc.id);
+        await addLocationPhoto(loc.id, coverUrl, true);
+      }
       const { markHasSavedSpot } = await import("@/lib/pwa/first-spot");
       markHasSavedSpot();
       setSpark(true);
@@ -105,12 +146,12 @@ export function QuickAddSheet({ open, onOpenChange, coords, categories, onCreate
         longitude: loc.longitude,
         isFavorite: loc.isFavorite,
         isVisited: loc.isVisited,
-        coverPhotoUrl: photoUrl,
+        coverPhotoUrl: coverUrl,
         categoryId: loc.categoryId,
         category: loc.category
           ? { color: loc.category.color, icon: loc.category.icon, name: loc.category.name }
           : null,
-        photos: photoUrl ? [{ url: photoUrl }] : [],
+        photos: coverUrl ? [{ url: coverUrl }] : [],
       });
       window.setTimeout(() => {
         reset();
@@ -211,13 +252,11 @@ export function QuickAddSheet({ open, onOpenChange, coords, categories, onCreate
                 <label
                   className={cn(
                     "relative flex items-center justify-center gap-2 h-12 w-12 rounded-xl border-2 border-dashed border-border cursor-pointer shrink-0 transition-colors overflow-hidden",
-                    photoUrl ? "border-primary/50 bg-primary/5" : "hover:border-primary/50"
+                    photoPreview ? "border-primary/50 bg-primary/5" : "hover:border-primary/50"
                   )}
                 >
-                  {photoUploading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  ) : photoUrl ? (
-                    <Image src={photoUrl} alt="" fill unoptimized className="object-cover rounded-xl" />
+                  {photoPreview ? (
+                    <Image src={photoPreview} alt="" fill unoptimized className="object-cover rounded-xl" />
                   ) : (
                     <Camera className="h-5 w-5 text-muted-foreground" />
                   )}

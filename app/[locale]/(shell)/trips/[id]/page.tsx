@@ -1,8 +1,7 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTripById } from "@/lib/actions/trips";
-import { prisma } from "@/lib/db";
-import { auth } from "@/lib/auth/config";
+import { searchLocationsForPicker } from "@/lib/actions/locations";
 import { TripDetailClientPage } from "@/components/trips/TripDetailClientPage";
 import { buildPageAlternates, OG_LOCALE, SITE_NAME } from "@/lib/seo/site";
 import { routing, type Locale } from "@/i18n/routing";
@@ -37,15 +36,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function TripDetailPage({ params }: Props) {
   const { id } = await params;
-  const session = await auth();
   const trip = await getTripById(id);
   if (!trip) notFound();
 
-  const locations = await prisma.location.findMany({
-    where: { userId: session!.user!.id, deletedAt: null },
-    select: { id: true, title: true, latitude: true, longitude: true, category: { select: { color: true } } },
-    orderBy: { title: "asc" },
-  });
+  const excludeIds = trip.locations.map((s) => s.locationId);
+  const seedLocations = await searchLocationsForPicker({ excludeIds, take: 50 });
 
-  return <TripDetailClientPage trip={trip} allLocations={locations} />;
+  return <TripDetailClientPage trip={trip} seedLocations={seedLocations} />;
 }

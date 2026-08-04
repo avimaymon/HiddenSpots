@@ -43,7 +43,11 @@ export function DriveQuickBackup() {
     setBacking(true);
     try {
       const result = await backupToDrive();
-      toast({ title: t("driveSuccess"), description: `${result.locationCount} spots`, variant: "success" });
+      toast({
+        title: t("driveSuccess"),
+        description: `${result.locationCount} ${t("driveBackupScopeShort")}`,
+        variant: "success",
+      });
       await refresh();
     } catch (e) {
       toast({ title: t("driveFailed"), description: String(e), variant: "destructive" });

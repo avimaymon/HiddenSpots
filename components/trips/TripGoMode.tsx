@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Navigation, Check, ChevronRight, X, Loader2, MapPin, Phone, Compass, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, getDistanceBetween, formatDistance, formatDuration } from "@/lib/utils";
 import { useGeolocation } from "@/hooks/use-geolocation";
 import { useCompass } from "@/hooks/use-compass";
 import { createVisit } from "@/lib/actions/visits";
+import { enqueueSync } from "@/lib/offline/db";
 import { toast } from "@/hooks/use-toast";
 import { buildWazeNavigate } from "@/lib/navigation/external-links";
 import { bearing as turfBearing } from "@turf/turf";
@@ -41,6 +42,7 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
   const [logging, setLogging] = useState(false);
   const [online, setOnline] = useState(true);
   const autoArrivedRef = useRef<Set<string>>(new Set());
+  const locale = useLocale();
   const { latitude, longitude, startWatch, stopWatch, denied, loading } = useGeolocation(true);
   const compassHeading = useCompass();
 
@@ -82,7 +84,7 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
       ? getDistanceBetween(latitude, longitude, current.location.latitude, current.location.longitude)
       : null;
 
-  const distanceToNext = metersToNext != null ? formatDistance(metersToNext) : null;
+  const distanceToNext = metersToNext != null ? formatDistance(metersToNext, locale) : null;
   const etaDrive = metersToNext != null ? estimateEtaMinutes(metersToNext, "drive") : null;
   const etaWalk = metersToNext != null ? estimateEtaMinutes(metersToNext, "walk") : null;
 
@@ -101,13 +103,23 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
     if (auto && autoArrivedRef.current.has(locId)) return;
     setLogging(true);
     try {
-      await createVisit({ locationId: locId, visitedAt: new Date().toISOString() });
+      const payload = { locationId: locId, visitedAt: new Date().toISOString() };
+      if (!navigator.onLine) {
+        await enqueueSync("visit", payload);
+        toast({
+          title: auto ? t("goMode.autoArrived") : t("goMode.stopVisited"),
+          description: t("goMode.offlineQueued"),
+          variant: "success",
+        });
+      } else {
+        await createVisit(payload);
+        toast({
+          title: auto ? t("goMode.autoArrived") : t("goMode.stopVisited"),
+          variant: "success",
+        });
+      }
       if (auto) autoArrivedRef.current.add(locId);
       setVisited((v) => new Set([...v, locId]));
-      toast({
-        title: auto ? t("goMode.autoArrived") : t("goMode.stopVisited"),
-        variant: "success",
-      });
       if (currentIdx + 1 < ordered.length) {
         setCurrentIdx((i) => i + 1);
       } else {
@@ -164,7 +176,7 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
           <a
             href={`sms:${trip.emergencyPhone}?body=${encodeURIComponent(`I'm on trip "${trip.name}" at ${latitude?.toFixed(5)},${longitude?.toFixed(5)} — checking in.`)}`}
             className="h-9 px-3 rounded-xl border border-destructive/40 bg-destructive/5 text-destructive flex items-center gap-1.5 text-xs font-semibold shrink-0"
-            title="Share my location"
+            title={t("goMode.shareLocation")}
           >
             <Phone className="h-3.5 w-3.5" />
           </a>
@@ -236,12 +248,12 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
                   </span>
                   {etaDrive != null && (
                     <span className="font-medium text-muted-foreground">
-                      {t("goMode.etaDrive", { time: formatDuration(etaDrive) })}
+                      {t("goMode.etaDrive", { time: formatDuration(etaDrive, locale) })}
                     </span>
                   )}
                   {etaWalk != null && metersToNext != null && metersToNext < 5000 && (
                     <span className="font-medium text-muted-foreground">
-                      {t("goMode.etaWalk", { time: formatDuration(etaWalk) })}
+                      {t("goMode.etaWalk", { time: formatDuration(etaWalk, locale) })}
                     </span>
                   )}
                 </div>
@@ -325,7 +337,7 @@ export function TripGoMode({ trip, stops, onClose }: Props) {
             >
               {i + 1}
             </span>
-            {stop.location?.title ?? "Stop"}
+            {stop.location?.title ?? t("stopFallback")}
           </div>
         ))}
       </div>

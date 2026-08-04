@@ -7,6 +7,12 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { getTrips, addLocationToTrip } from "@/lib/actions/trips";
+import { enqueueSync } from "@/lib/offline/db";
+import {
+  TRIPS_CACHE_KEY,
+  readEntityCache,
+  writeEntityCache,
+} from "@/lib/offline/entity-cache";
 import { toast } from "@/hooks/use-toast";
 import { useTranslations } from "next-intl";
 
@@ -29,12 +35,41 @@ export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    getTrips().then((t) => { setTrips(t); setLoading(false); });
+
+    async function load() {
+      if (!navigator.onLine) {
+        setTrips(readEntityCache<Trip[]>(TRIPS_CACHE_KEY) ?? []);
+        setLoading(false);
+        return;
+      }
+      try {
+        const list = await getTrips();
+        setTrips(list);
+        writeEntityCache(TRIPS_CACHE_KEY, list);
+      } catch {
+        setTrips(readEntityCache<Trip[]>(TRIPS_CACHE_KEY) ?? []);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void load();
   }, [open]);
 
   async function handleAdd(tripId: string) {
     setBusy(tripId);
     try {
+      if (!navigator.onLine) {
+        await enqueueSync("trip-add", { tripId, locationId });
+        toast({
+          title: t("addedToTrip"),
+          description: t("goMode.offlineQueued"),
+          variant: "success",
+        });
+        onOpenChange(false);
+        return;
+      }
+
       await addLocationToTrip(tripId, locationId);
       toast({ title: t("addedToTrip"), variant: "success" });
       onOpenChange(false);
@@ -47,7 +82,7 @@ export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" description={t("addToTripTitle")}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Route className="h-4 w-4 text-primary" />
@@ -80,7 +115,9 @@ export function AddToTripDialog({ locationId, open, onOpenChange }: Props) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{trip.name}</p>
-                    <p className="text-xs text-muted-foreground">{trip._count.locations} {t("stops")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {trip._count.locations} {t("stops")}
+                  </p>
                 </div>
                 {busy === trip.id ? (
                   <Loader2 className="h-4 w-4 animate-spin shrink-0" />

@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useTranslations } from "next-intl";
 import { useSettingsStore } from "@/lib/store/settings";
 import type { MapViewProps } from "@/lib/map/types";
 
@@ -26,9 +27,10 @@ export function MapView(props: MapViewProps) {
 }
 
 function MapSkeleton() {
+  const t = useTranslations("locations");
   return (
     <div className="w-full h-full bg-muted animate-pulse flex items-center justify-center">
-      <div className="text-muted-foreground text-sm">Loading map…</div>
+      <div className="text-muted-foreground text-sm">{t("loadingMap")}</div>
     </div>
   );
 }

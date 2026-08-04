@@ -28,5 +28,8 @@
   "noLocationsHint": "הוסף מיקומים מהמפה",
   "addToCollectionTitle": "הוסף לאוסף",
   "removeFromCollection": "הוסר מהאוסף",
-  "noCollectionsHint": "עוד אין אוספים. צור אחד מדף האוספים."
+  "noCollectionsHint": "עוד אין אוספים. צור אחד מדף האוספים.",
+  "savedOffline": "נשמר במכשיר — יסונכרן כשיחזור הקשר",
+  "pendingSync": "ממתין לסנכרון",
+  "pendingSyncHint": "יהיה זמין במפה אחרי שהקשר יחזור והסנכרון יסתיים"
 }

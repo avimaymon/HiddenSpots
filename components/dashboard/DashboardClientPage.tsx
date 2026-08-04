@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Link } from "@/i18n/navigation";
 import Image from "next/image";
-import { format } from "date-fns";
 import { FadeIn, StaggerList, StaggerItem } from "@/components/motion/primitives";
 import {
   MapPin, Eye, Heart, Bookmark, TrendingUp, Footprints, ArrowRight,
@@ -13,9 +12,11 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SmartViewsSection } from "@/components/dashboard/SmartViewsSection";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { NearbyNowCard } from "@/components/dashboard/NearbyNowCard";
+import { TodayInTheFieldCard } from "@/components/dashboard/TodayInTheFieldCard";
 import { BadgesSection } from "@/components/dashboard/BadgesSection";
+import { formatLocalizedDate } from "@/lib/utils";
 
 type Stats = Awaited<ReturnType<typeof import("@/lib/actions/visits").getDashboardStats>>;
 type SmartView = Awaited<ReturnType<typeof import("@/lib/actions/smart-views").getSmartViews>>[0];
@@ -27,15 +28,6 @@ interface Props {
 
 const WIDGET_KEYS = ["nearby", "rank", "stats", "seasonal", "bucketlist", "badges"] as const;
 type WidgetKey = typeof WIDGET_KEYS[number];
-
-const WIDGET_LABELS: Record<WidgetKey, string> = {
-  nearby: "Nearby Now",
-  rank: "Explorer Rank & Streak",
-  stats: "Stats Cards",
-  seasonal: "Seasonal Recommendations",
-  bucketlist: "Bucket List Progress",
-  badges: "Explorer Badges",
-};
 
 function useWidgetVisibility() {
   const STORAGE_KEY = "hs_dashboard_widgets";
@@ -61,6 +53,7 @@ function useWidgetVisibility() {
 
 export function DashboardClientPage({ stats, smartViews }: Props) {
   const t = useTranslations("dashboard");
+  const locale = useLocale();
   const { hidden, toggle } = useWidgetVisibility();
   const [showConfig, setShowConfig] = useState(false);
 
@@ -82,7 +75,16 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
         title={t("title")}
         description=""
       >
-        <Button variant="ghost" size="icon-sm" className="rounded-xl" onClick={() => setShowConfig((v) => !v)} title="Configure widgets">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="rounded-xl"
+          onClick={() => setShowConfig((v) => !v)}
+          title={t("configureWidgets")}
+          aria-label={t("configureWidgets")}
+          aria-expanded={showConfig}
+          aria-controls="dashboard-widget-config"
+        >
           <Settings2 className="h-4 w-4" />
         </Button>
         <Button asChild size="sm" className="rounded-xl">
@@ -91,16 +93,23 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
       </PageHeader>
 
       {showConfig && (
-        <div className="px-4 sm:px-6 py-3 border-b border-border/50 bg-muted/30">
-          <p className="text-xs font-semibold text-muted-foreground mb-2">Show/hide widgets</p>
-          <div className="flex flex-wrap gap-2">
+        <div
+          id="dashboard-widget-config"
+          role="region"
+          aria-label={t("configureWidgets")}
+          className="px-4 sm:px-6 py-3 border-b border-border/50 bg-muted/30"
+        >
+          <p className="text-xs font-semibold text-muted-foreground mb-2">{t("configureWidgets")}</p>
+          <div className="flex flex-wrap gap-2" role="group">
             {WIDGET_KEYS.map((key) => (
               <button
                 key={key}
+                type="button"
                 onClick={() => toggle(key)}
+                aria-pressed={!hidden.has(key)}
                 className={`px-2.5 py-1 rounded-full text-xs border transition-all ${hidden.has(key) ? "bg-muted border-border text-muted-foreground" : "bg-primary text-primary-foreground border-primary"}`}
               >
-                {hidden.has(key) ? "+" : "✓"} {WIDGET_LABELS[key]}
+                {hidden.has(key) ? "+" : "✓"} {t(`widgets.${key}`)}
               </button>
             ))}
           </div>
@@ -108,6 +117,19 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
       )}
 
       <div className="p-4 sm:p-6 space-y-6">
+        <TodayInTheFieldCard
+          todayVisits={stats.todayVisits}
+          locations={[
+            ...stats.recentLocations,
+            ...stats.topVisited,
+          ].map((l) => ({
+            id: l.id,
+            title: l.title,
+            latitude: l.latitude,
+            longitude: l.longitude,
+          }))}
+        />
+
         <SmartViewsSection initialViews={smartViews as Parameters<typeof SmartViewsSection>[0]["initialViews"]} />
 
         {(stats.weekLocationsAdded > 0 || stats.weekVisits > 0 || stats.totalLocations > 0) && (
@@ -132,16 +154,16 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
           <div className="rounded-2xl border border-border/50 bg-card/60 p-4">
             <div className="flex items-center gap-1.5 mb-1">
               <Trophy className="h-4 w-4 text-amber-500" />
-              <p className="text-xs text-muted-foreground font-medium">Explorer Rank</p>
+              <p className="text-xs text-muted-foreground font-medium">{t("explorerRank")}</p>
             </div>
             <p className="text-lg font-bold">{stats.explorerRank}</p>
           </div>
           <div className="rounded-2xl border border-border/50 bg-card/60 p-4">
             <div className="flex items-center gap-1.5 mb-1">
               <Flame className="h-4 w-4 text-orange-500" />
-              <p className="text-xs text-muted-foreground font-medium">Visit Streak</p>
+              <p className="text-xs text-muted-foreground font-medium">{t("visitStreak")}</p>
             </div>
-            <p className="text-lg font-bold">{stats.visitStreak} <span className="text-xs font-normal text-muted-foreground">weeks</span></p>
+            <p className="text-lg font-bold">{stats.visitStreak} <span className="text-xs font-normal text-muted-foreground">{t("weeks")}</span></p>
           </div>
           <Link
             href="/app?surprise=1"
@@ -149,9 +171,9 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
           >
             <div className="flex items-center gap-1.5 mb-1">
               <Shuffle className="h-4 w-4 text-primary" />
-              <p className="text-xs text-muted-foreground font-medium">Surprise Me</p>
+              <p className="text-xs text-muted-foreground font-medium">{t("surpriseMe")}</p>
             </div>
-            <p className="text-sm font-semibold text-primary">Random spot →</p>
+            <p className="text-sm font-semibold text-primary">{t("randomSpot")}</p>
           </Link>
         </div>}
 
@@ -160,10 +182,13 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
           <div className="rounded-2xl border border-border/50 bg-card/60 p-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-semibold flex items-center gap-1.5">
-                <Bookmark className="h-4 w-4 text-amber-500" /> Bucket List
+                <Bookmark className="h-4 w-4 text-amber-500" /> {t("bucketListProgress")}
               </p>
               <span className="text-xs text-muted-foreground tabular-nums">
-                {stats.bucketListVisited} / {stats.bucketList} visited
+                {t("bucketListVisited", {
+                  visited: stats.bucketListVisited,
+                  total: stats.bucketList,
+                })}
               </span>
             </div>
             <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -201,7 +226,18 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Sun className="h-4 w-4 text-amber-500" />
-              <h2 className="font-bold text-sm">Good for {stats.currentSeason}</h2>
+              <h2 className="font-bold text-sm">
+                {t("goodForSeason", {
+                  season:
+                    stats.currentSeason === "Spring"
+                      ? t("seasonSpring")
+                      : stats.currentSeason === "Summer"
+                        ? t("seasonSummer")
+                        : stats.currentSeason === "Autumn"
+                          ? t("seasonAutumn")
+                          : t("seasonWinter"),
+                })}
+              </h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {stats.seasonalSpots.map((loc) => (
@@ -221,30 +257,30 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
         )}
 
         <div className="grid lg:grid-cols-2 gap-4">
-          <Section title="Recently Added" href="/locations">
+          <Section title={t("recentlyAdded")} href="/locations">
             {stats.recentLocations.length === 0 ? (
-              <Empty hint="Add your first spot on the map" />
+              <Empty hint={t("emptyAddFirst")} />
             ) : (
               stats.recentLocations.map((loc) => (
-                <SpotRow key={loc.id} id={loc.id} title={loc.title} photo={loc.photos[0]?.url} category={loc.category?.name} meta={format(new Date(loc.createdAt), "MMM d")} />
+                <SpotRow key={loc.id} id={loc.id} title={loc.title} photo={loc.photos[0]?.url} category={loc.category?.name} meta={formatLocalizedDate(loc.createdAt, "MMM d", locale)} />
               ))
             )}
           </Section>
 
-          <Section title="Most Visited" href="/visits">
+          <Section title={t("mostVisited")} href="/visits">
             {stats.topVisited.length === 0 ? (
-              <Empty hint="Log visits to track your favorites" />
+              <Empty hint={t("emptyLogVisits")} />
             ) : (
               stats.topVisited.map((loc) => (
-                <SpotRow key={loc.id} id={loc.id} title={loc.title} photo={loc.photos[0]?.url} category={loc.category?.name} meta={`${loc.visitCount} visits`} />
+                <SpotRow key={loc.id} id={loc.id} title={loc.title} photo={loc.photos[0]?.url} category={loc.category?.name} meta={t("visitsCount", { count: loc.visitCount })} />
               ))
             )}
           </Section>
         </div>
 
-        <Section title="Recent Visits" href="/visits" full>
+        <Section title={t("recentVisits")} href="/visits" full>
           {stats.recentVisits.length === 0 ? (
-            <Empty hint="Tap the footprints icon on any spot to log a visit" />
+            <Empty hint={t("emptyTapFootprints")} />
           ) : (
             <div className="grid sm:grid-cols-2 gap-2">
               {stats.recentVisits.map((visit) => (
@@ -259,7 +295,7 @@ export function DashboardClientPage({ stats, smartViews }: Props) {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold truncate">{visit.location.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {format(new Date(visit.visitedAt), "MMM d, yyyy")}
+                      {formatLocalizedDate(visit.visitedAt, "MMM d, yyyy", locale)}
                       {visit.rating ? ` · ${"★".repeat(visit.rating)}` : ""}
                     </p>
                   </div>

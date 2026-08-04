@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registerUser } from "@/lib/actions/auth";
+import { safeCallbackUrl } from "@/lib/auth/safe-callback-url";
 import { toast } from "@/hooks/use-toast";
 
 export function SignUpForm() {
   const t = useTranslations("auth");
   const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") ?? undefined;
+  const callbackUrl = safeCallbackUrl(params.get("callbackUrl"), "/he/app");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -30,10 +31,14 @@ export function SignUpForm() {
       await signIn("credentials", {
         email: fd.get("email"),
         password: fd.get("password"),
-        callbackUrl: callbackUrl ?? "/he/app",
+        callbackUrl,
       });
     } catch (err) {
-      toast({ title: String(err), variant: "destructive" });
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({
+        title: msg.includes("RATE_LIMITED") ? t("tooManyAttempts") : msg,
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }

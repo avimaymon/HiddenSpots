@@ -3,6 +3,10 @@
 import { revalidateAppPaths } from "@/lib/revalidate";
 import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
+import { IMPORT_LOCATIONS_MAX } from "@/lib/import/limits";
+import { DUPE_SCAN_MAX, EXPORT_LOCATIONS_MAX } from "@/lib/export/limits";
+import { approxDistanceMeters, DUPE_RADIUS_METERS } from "@/lib/geo/dupe";
 import { locationSchema } from "@/lib/validations/schemas";
 import type { LocationFormData } from "@/lib/validations/schemas";
 
@@ -12,32 +16,49 @@ async function requireAuth() {
   return session.user.id;
 }
 
-const DUPE_RADIUS_METERS = 50;
-
-function approxDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  return R * Math.sqrt(dLat * dLat + dLng * dLng);
-}
+export type ImportLocationsResult = {
+  created: number;
+  skipped: number;
+  errors: string[];
+  truncated: boolean;
+  received: number;
+  processed: number;
+};
 
 export async function importLocations(
   items: Partial<LocationFormData>[]
-): Promise<{ created: number; skipped: number; errors: string[] }> {
+): Promise<ImportLocationsResult> {
   const userId = await requireAuth();
+  const { ok } = await rateLimit(`import:${userId}`, 5, 60_000, { failClosed: true });
+  if (!ok) {
+    throw new Error("RATE_LIMITED");
+  }
+
+  const received = items.length;
+  const truncated = received > IMPORT_LOCATIONS_MAX;
+  const batch = truncated ? items.slice(0, IMPORT_LOCATIONS_MAX) : items;
   const errors: string[] = [];
   let created = 0;
   let skipped = 0;
+
+  if (truncated) {
+    errors.push(`TRUNCATED:${IMPORT_LOCATIONS_MAX}`);
+  }
 
   // Load existing locations to check for near-duplicates (same title OR within ~50m)
   const existing = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     select: { title: true, latitude: true, longitude: true },
+    take: DUPE_SCAN_MAX,
+    orderBy: { updatedAt: "desc" },
   });
+  if (existing.length >= DUPE_SCAN_MAX) {
+    errors.push(`DUPE_SCAN_TRUNCATED:${DUPE_SCAN_MAX}`);
+  }
   const existingTitles = new Set(existing.map((ex) => ex.title.trim().toLowerCase()));
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
+  for (let i = 0; i < batch.length; i++) {
+    const item = batch[i];
     try {
       if (item.latitude == null || item.longitude == null) {
         errors.push(`Row ${i + 1}: missing coordinates`);
@@ -79,7 +100,14 @@ export async function importLocations(
   }
 
   revalidateAppPaths("/locations", "/dashboard");
-  return { created, skipped, errors };
+  return {
+    created,
+    skipped,
+    errors,
+    truncated,
+    received,
+    processed: batch.length,
+  };
 }
 
 /** Fetch Google My Maps as KML and return import preview (no write). */
@@ -116,18 +144,28 @@ export async function previewMyMapsUrl(urlOrMid: string): Promise<{
   return { ...preview, source: "Google My Maps", mid };
 }
 
-export async function importMyMapsUrl(urlOrMid: string) {
+export async function importMyMapsUrl(urlOrMid: string): Promise<ImportLocationsResult> {
   const preview = await previewMyMapsUrl(urlOrMid);
   if (!preview.count) {
-    return { created: 0, skipped: 0, errors: preview.errors.length ? preview.errors : ["EMPTY"] };
+    return {
+      created: 0,
+      skipped: 0,
+      errors: preview.errors.length ? preview.errors : ["EMPTY"],
+      truncated: false,
+      received: 0,
+      processed: 0,
+    };
   }
   return importLocations(preview.locations);
 }
 
-export async function exportLocationsAsGeoJson(userId: string) {
+export async function exportLocationsAsGeoJson() {
+  const userId = await requireAuth();
   const locations = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     include: { category: true, tags: { include: { tag: true } } },
+    take: EXPORT_LOCATIONS_MAX,
+    orderBy: { createdAt: "asc" },
   });
 
   return {
@@ -148,10 +186,13 @@ export async function exportLocationsAsGeoJson(userId: string) {
   };
 }
 
-export async function exportLocationsAsCsv(userId: string) {
+export async function exportLocationsAsCsv() {
+  const userId = await requireAuth();
   const locations = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     include: { category: true, tags: { include: { tag: true } } },
+    take: EXPORT_LOCATIONS_MAX,
+    orderBy: { createdAt: "asc" },
   });
 
   const header = "name,latitude,longitude,category,description,tags,isFavorite,isVisited,createdAt";

@@ -1,22 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-const APP_VERSION = "2.0.0";
+const APP_VERSION = "2.1.0";
 const STORAGE_KEY = "hiddenspots_seen_version";
 
-const CHANGES = [
-  { emoji: "🗺️", title: "3D Terrain & Contour Lines", body: "Toggle 3D terrain and topographic contour lines on the Mapbox map." },
-  { emoji: "🌅", title: "Sunrise & Moon Phase", body: "See today's sunrise, sunset, golden hour, and moon phase on every location detail." },
-  { emoji: "🔍", title: "Spot Search in Command Palette", body: "Cmd+K now searches your spots in real-time, not just page navigation." },
-  { emoji: "⚡", title: "Route Optimization", body: "Hit 'Optimize order' on a trip to automatically sort stops by proximity." },
-  { emoji: "🏆", title: "Explorer Rank & Streaks", body: "Your dashboard now shows your Explorer Rank and consecutive visit streak." },
-];
+const ITEM_KEYS = ["tracks", "offline", "drive", "badges", "sun"] as const;
+const EMOJIS: Record<(typeof ITEM_KEYS)[number], string> = {
+  tracks: "🥾",
+  offline: "📶",
+  drive: "☁️",
+  badges: "🏅",
+  sun: "☀️",
+};
 
 export function WhatsNewModal() {
-  // Lazy init avoids calling setState inside an effect
+  const t = useTranslations("whatsnew");
   const [open, setOpen] = useState(
     () => typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY) !== APP_VERSION
   );
@@ -30,21 +32,21 @@ export function WhatsNewModal() {
     <Dialog open={open} onOpenChange={(v) => { if (!v) dismiss(); }}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-center">✨ What&apos;s New</DialogTitle>
+          <DialogTitle className="text-center">✨ {t("title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          {CHANGES.map((c) => (
-            <div key={c.title} className="flex items-start gap-3">
-              <span className="text-2xl shrink-0 leading-none">{c.emoji}</span>
+          {ITEM_KEYS.map((key) => (
+            <div key={key} className="flex items-start gap-3">
+              <span className="text-2xl shrink-0 leading-none">{EMOJIS[key]}</span>
               <div>
-                <p className="text-sm font-semibold">{c.title}</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">{c.body}</p>
+                <p className="text-sm font-semibold">{t(`items.${key}.title`)}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{t(`items.${key}.body`)}</p>
               </div>
             </div>
           ))}
         </div>
         <DialogFooter>
-          <Button className="w-full rounded-xl" onClick={dismiss}>Got it!</Button>
+          <Button className="w-full rounded-xl" onClick={dismiss}>{t("gotIt")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

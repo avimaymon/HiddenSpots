@@ -12,6 +12,8 @@
 export interface RateLimitResult {
   ok: boolean;
   remaining: number;
+  /** Set when Upstash request failed (before failClosed override). */
+  upstreamError?: boolean;
 }
 
 // ─── In-memory fallback ──────────────────────────────────────────────────────
@@ -68,8 +70,8 @@ async function upstashRateLimit(
   });
 
   if (!res.ok) {
-    // Allow on transient Upstash error; don't block the user
-    return { ok: true, remaining: limit };
+    // Callers opt into fail-closed for sensitive routes via rateLimit(..., { failClosed: true })
+    return { ok: true, remaining: limit, upstreamError: true };
   }
 
   const [[, count]] = await res.json() as [[null, number]];
@@ -87,10 +89,15 @@ const HAS_UPSTASH =
 export async function rateLimit(
   key: string,
   limit = 30,
-  windowMs = 60_000
+  windowMs = 60_000,
+  opts?: { failClosed?: boolean }
 ): Promise<RateLimitResult> {
   if (HAS_UPSTASH) {
-    return upstashRateLimit(key, limit, windowMs);
+    const result = await upstashRateLimit(key, limit, windowMs);
+    if (result.upstreamError && opts?.failClosed) {
+      return { ok: false, remaining: 0, upstreamError: true };
+    }
+    return result;
   }
   return inMemoryRateLimit(key, limit, windowMs);
 }

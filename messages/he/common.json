@@ -27,5 +27,9 @@
   "sendFeedback": "שלח משוב",
   "feedbackThanks": "תודה! המשוב התקבל",
   "feedbackFailed": "שליחת המשוב נכשלה",
-  "sending": "שולח…"
+  "sending": "שולח…",
+  "notifications": "התראות",
+  "notificationsEmpty": "עוד אין התראות",
+  "dismiss": "סגור",
+  "undo": "בטל"
 }

@@ -1,22 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { Link } from "@/i18n/navigation";
+import dynamic from "next/dynamic";
+import { Link, useRouter } from "@/i18n/navigation";
 import Image from "next/image";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { MapPin, FolderOpen, Route, Eye, ExternalLink, Navigation, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AppLogo } from "@/components/shared/AppLogo";
 import { QuickNavButtons } from "@/components/shared/QuickNavButtons";
 import { ShareActions } from "@/components/share/ShareActions";
-import { MapView } from "@/components/map/MapView";
 import type { MapLocation } from "@/lib/map/types";
 import { buildWazeNavigate } from "@/lib/navigation/external-links";
 import { cloneTrip } from "@/lib/actions/trips";
 import { cloneCollection } from "@/lib/actions/collections";
+import { publicCategoryLabel } from "@/lib/shares/public-location";
 import { toast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
+
+const MapView = dynamic(
+  () => import("@/components/map/MapView").then((m) => m.MapView),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full animate-pulse bg-muted/40" aria-hidden />
+    ),
+  }
+);
 
 type Share = NonNullable<Awaited<ReturnType<typeof import("@/lib/actions/shares").getShareByToken>>>;
 
@@ -26,6 +36,7 @@ interface Props {
 
 export function SharePublicPage({ share }: Props) {
   const t = useTranslations("sharing");
+  const locale = useLocale();
   const router = useRouter();
   const [cloning, setCloning] = useState(false);
   const location = share.location;
@@ -46,6 +57,23 @@ export function SharePublicPage({ share }: Props) {
       isVisited: false,
     })) ?? [];
 
+  const singleMapLocations: MapLocation[] = location
+    ? [
+        {
+          id: location.id,
+          title: location.title,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          categoryColor: location.category?.color ?? "#22c55e",
+          categoryIcon: location.category?.icon ?? "map-pin",
+          isFavorite: false,
+          isVisited: false,
+        },
+      ]
+    : [];
+
+  const categoryLabel = publicCategoryLabel(location?.category ?? null, locale);
+
   return (
     <div className="min-h-[100dvh] bg-background">
       <header className="border-b border-border/50 glass-strong px-4 py-4 flex items-center justify-between">
@@ -57,13 +85,10 @@ export function SharePublicPage({ share }: Props) {
       </header>
 
       <main id="main-content" className="max-w-2xl mx-auto p-4 sm:p-8 space-y-6">
-        {/* Hero CTA — WhatsApp / second-user loop */}
         <section className="rounded-2xl border border-primary/25 bg-primary/5 p-5 space-y-3 text-center">
           <p className="text-sm font-medium text-foreground">{t("saveToAtlasHint")}</p>
           <Button className="rounded-xl h-11 w-full sm:w-auto px-8" asChild>
-            <Link href="/signup">
-              {t("saveToAtlasCta")}
-            </Link>
+            <Link href="/signup">{t("saveToAtlasCta")}</Link>
           </Button>
           <p className="text-xs text-muted-foreground">
             <Link href="/signin" className="underline underline-offset-2">
@@ -80,9 +105,13 @@ export function SharePublicPage({ share }: Props) {
               </div>
               <div>
                 <h1 className="text-2xl font-bold">{location.title}</h1>
-                {location.category && (
-                  <Badge variant="outline" className="mt-2" style={{ color: location.category.color }}>
-                    {location.category.name}
+                {categoryLabel && (
+                  <Badge
+                    variant="outline"
+                    className="mt-2"
+                    style={{ color: location.category?.color }}
+                  >
+                    {categoryLabel}
                   </Badge>
                 )}
               </div>
@@ -90,6 +119,19 @@ export function SharePublicPage({ share }: Props) {
             {location.description && (
               <p className="text-muted-foreground leading-relaxed">{location.description}</p>
             )}
+
+            {singleMapLocations.length > 0 && (
+              <div className="rounded-2xl overflow-hidden h-56 border border-border/50">
+                <MapView
+                  locations={singleMapLocations}
+                  selectedId={location.id}
+                  onLocationClick={() => {}}
+                  showClusters={false}
+                  className="h-full w-full"
+                />
+              </div>
+            )}
+
             <div className="rounded-2xl border border-border/50 p-4 space-y-3">
               <p className="text-sm font-mono text-muted-foreground">
                 {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
@@ -105,8 +147,16 @@ export function SharePublicPage({ share }: Props) {
             </div>
             {location.photos.length > 0 && (
               <div className="grid grid-cols-2 gap-2">
-                {(location.photos as { id: string; url: string }[]).slice(0, 4).map((p) => (
-                  <Image key={p.id} src={p.url} alt="" width={400} height={225} unoptimized className="rounded-xl aspect-video object-cover w-full" />
+                {location.photos.slice(0, 4).map((p) => (
+                  <Image
+                    key={p.id}
+                    src={p.url}
+                    alt={location.title}
+                    width={400}
+                    height={225}
+                    unoptimized
+                    className="rounded-xl aspect-video object-cover w-full"
+                  />
                 ))}
               </div>
             )}
@@ -147,7 +197,10 @@ export function SharePublicPage({ share }: Props) {
               onClick={async () => {
                 setCloning(true);
                 try {
-                  const clone = await cloneCollection(collection.id);
+                  const clone = await cloneCollection(
+                    collection.id,
+                    share.publicToken ?? undefined
+                  );
                   toast({ title: t("collectionCloned"), variant: "success" });
                   router.push(`/collections`);
                   void clone;
@@ -164,7 +217,7 @@ export function SharePublicPage({ share }: Props) {
 
             <div className="space-y-2">
               {collection.locations.map((cl) => {
-                const photo = (cl.location as { photos?: { url: string }[] }).photos?.[0];
+                const photo = cl.location.photos?.[0];
                 return (
                   <div
                     key={cl.collectionId + cl.locationId}
@@ -173,14 +226,16 @@ export function SharePublicPage({ share }: Props) {
                     {photo ? (
                       <Image
                         src={photo.url}
-                        alt=""
+                        alt={cl.location.title}
                         width={48}
                         height={48}
                         unoptimized
-                        className="h-12 w-12 rounded-lg object-cover shrink-0"
+                        className="rounded-lg object-cover h-12 w-12"
                       />
                     ) : (
-                      <MapPin className="h-4 w-4 text-primary shrink-0" />
+                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                      </div>
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-sm truncate">{cl.location.title}</p>
@@ -197,9 +252,9 @@ export function SharePublicPage({ share }: Props) {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="shrink-0 text-primary"
-                      aria-label={t("navigateTo")}
+                      aria-label={cl.location.title}
                     >
-                      <Navigation className="h-4 w-4" />
+                      <Navigation className="h-3.5 w-3.5" />
                     </a>
                   </div>
                 );
@@ -208,96 +263,108 @@ export function SharePublicPage({ share }: Props) {
           </section>
         )}
 
-        {trip && (() => {
-          const tripMapLocations: MapLocation[] = trip.locations.map((stop) => ({
-            id: stop.location.id,
-            title: stop.location.title,
-            latitude: stop.location.latitude,
-            longitude: stop.location.longitude,
-            categoryColor: stop.location.category?.color ?? trip.color,
-            categoryIcon: "map-pin",
-            isFavorite: false,
-            isVisited: false,
-          }));
-          const tripPolyline = trip.locations.map((stop) => ({
-            lat: stop.location.latitude,
-            lng: stop.location.longitude,
-            color: trip.color,
-          }));
-          return (
-            <section className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Route className="h-6 w-6" style={{ color: trip.color }} />
-                <h1 className="text-2xl font-bold">{trip.name}</h1>
-              </div>
-              {trip.description && <p className="text-muted-foreground">{trip.description}</p>}
-
-              {tripMapLocations.length > 0 && (
-                <div className="rounded-2xl overflow-hidden h-56 border border-border/50">
-                  <MapView
-                    locations={tripMapLocations}
-                    onLocationClick={() => {}}
-                    showClusters={false}
-                    tripPolyline={tripPolyline}
-                    className="h-full w-full"
-                  />
+        {trip &&
+          (() => {
+            const tripMapLocations: MapLocation[] = trip.locations.map((stop) => ({
+              id: stop.location.id,
+              title: stop.location.title,
+              latitude: stop.location.latitude,
+              longitude: stop.location.longitude,
+              categoryColor: stop.location.category?.color ?? trip.color,
+              categoryIcon: "map-pin",
+              isFavorite: false,
+              isVisited: false,
+            }));
+            const tripPolyline = trip.locations.map((stop) => ({
+              lat: stop.location.latitude,
+              lng: stop.location.longitude,
+              color: trip.color,
+            }));
+            return (
+              <section className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Route className="h-6 w-6" style={{ color: trip.color }} />
+                  <h1 className="text-2xl font-bold">{trip.name}</h1>
                 </div>
-              )}
+                {trip.description && (
+                  <p className="text-muted-foreground">{trip.description}</p>
+                )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-xl"
-                disabled={cloning}
-                onClick={async () => {
-                  setCloning(true);
-                  try {
-                    const clone = await cloneTrip(trip.id);
-                    toast({ title: t("tripCloned"), variant: "success" });
-                    router.push(`/trips/${clone.id}`);
-                  } catch {
-                    toast({ title: t("signInToClone"), variant: "destructive" });
-                  } finally {
-                    setCloning(false);
-                  }
-                }}
-              >
-                <Copy className="h-3.5 w-3.5 me-1.5" />
-                {cloning ? "…" : t("cloneTrip")}
-              </Button>
+                {tripMapLocations.length > 0 && (
+                  <div className="rounded-2xl overflow-hidden h-56 border border-border/50">
+                    <MapView
+                      locations={tripMapLocations}
+                      onLocationClick={() => {}}
+                      showClusters={false}
+                      tripPolyline={tripPolyline}
+                      className="h-full w-full"
+                    />
+                  </div>
+                )}
 
-              <ol className="space-y-2">
-                {trip.locations.map((stop, i) => (
-                  <li
-                    key={stop.id}
-                    className="flex items-center gap-3 p-3 rounded-xl border border-border/50"
-                  >
-                    <span
-                      className="h-7 w-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
-                      style={{ background: `${trip.color}20`, color: trip.color }}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl"
+                  disabled={cloning}
+                  onClick={async () => {
+                    setCloning(true);
+                    try {
+                      const clone = await cloneTrip(
+                        trip.id,
+                        share.publicToken ?? undefined
+                      );
+                      toast({ title: t("tripCloned"), variant: "success" });
+                      router.push(`/trips/${clone.id}`);
+                    } catch {
+                      toast({ title: t("signInToClone"), variant: "destructive" });
+                    } finally {
+                      setCloning(false);
+                    }
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5 me-1.5" />
+                  {cloning ? "…" : t("cloneTrip")}
+                </Button>
+
+                <ol className="space-y-2">
+                  {trip.locations.map((stop, i) => (
+                    <li
+                      key={stop.id}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-border/50"
                     >
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm truncate">{stop.location.title}</p>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {stop.location.latitude.toFixed(4)}, {stop.location.longitude.toFixed(4)}
-                      </p>
-                    </div>
-                    <a
-                      href={buildWazeNavigate({ latitude: stop.location.latitude, longitude: stop.location.longitude, title: stop.location.title })}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 flex items-center gap-1 text-xs text-primary font-medium hover:underline"
-                    >
-                      <Navigation className="h-3.5 w-3.5" />
-                    </a>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          );
-        })()}
+                      <span
+                        className="h-7 w-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
+                        style={{ background: `${trip.color}20`, color: trip.color }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate">{stop.location.title}</p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {stop.location.latitude.toFixed(4)},{" "}
+                          {stop.location.longitude.toFixed(4)}
+                        </p>
+                      </div>
+                      <a
+                        href={buildWazeNavigate({
+                          latitude: stop.location.latitude,
+                          longitude: stop.location.longitude,
+                          title: stop.location.title,
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 flex items-center gap-1 text-xs text-primary font-medium hover:underline"
+                        aria-label={stop.location.title}
+                      >
+                        <Navigation className="h-3.5 w-3.5" />
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            );
+          })()}
 
         <div className="pt-6 border-t border-border/50 text-center space-y-4">
           <ShareActions title={shareTitle} />

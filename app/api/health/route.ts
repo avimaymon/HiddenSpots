@@ -11,8 +11,9 @@ export async function GET() {
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
+    console.error("[health]", e);
     return Response.json(
-      { status: "error", message: String(e) },
+      { status: "error" },
       { status: 503, headers: { "Cache-Control": "no-store" } }
     );
   }

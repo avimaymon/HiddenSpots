@@ -565,6 +565,19 @@
   filter: brightness(1.06) saturate(0.95);
 }
 
+/* Outdoor contrast: keep chrome readable under glare */
+[data-theme="sun"] .text-muted-foreground {
+  color: hsl(25 8% 22%);
+}
+[data-theme="sun"] .border-border\/60,
+[data-theme="sun"] .border-border\/50 {
+  border-color: hsl(55 25% 62%);
+}
+[data-theme="sun"] button,
+[data-theme="sun"] [role="button"] {
+  font-weight: 600;
+}
+
 /* ─── Font size overrides ─── */
 [data-font-size="large"] {
   font-size: 105%;

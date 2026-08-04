@@ -4,6 +4,12 @@ import { revalidateAppPaths } from "@/lib/revalidate";
 import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
 import { collectionSchema } from "@/lib/validations/schemas";
+import {
+  assertCanCloneCollection,
+  assertCanCloneCollectionWithToken,
+  assertOwnsCollection,
+  assertOwnsLocation,
+} from "@/lib/permissions/resource-access";
 
 async function requireAuth() {
   const session = await auth();
@@ -36,6 +42,7 @@ export async function getCollections() {
       },
     },
     orderBy: { sortOrder: "asc" },
+    take: 500,
   });
 }
 
@@ -43,7 +50,7 @@ export async function createCollection(data: unknown) {
   const userId = await requireAuth();
   const validated = collectionSchema.parse(data);
   if (validated.parentId) {
-    await assertOwns(userId, validated.parentId);
+    await assertOwnsCollection(userId, validated.parentId);
   }
   const collection = await prisma.collection.create({
     data: { ...validated, userId },
@@ -54,7 +61,7 @@ export async function createCollection(data: unknown) {
 
 export async function updateCollection(id: string, data: unknown) {
   const userId = await requireAuth();
-  await assertOwns(userId, id);
+  await assertOwnsCollection(userId, id);
   const validated = collectionSchema.partial().parse(data);
   const collection = await prisma.collection.update({
     where: { id },
@@ -67,7 +74,7 @@ export async function updateCollection(id: string, data: unknown) {
 
 export async function deleteCollection(id: string) {
   const userId = await requireAuth();
-  await assertOwns(userId, id);
+  await assertOwnsCollection(userId, id);
   await prisma.collection.updateMany({
     where: { userId, parentId: id },
     data: { parentId: null },
@@ -81,7 +88,8 @@ export async function addLocationToCollection(
   locationId: string
 ) {
   const userId = await requireAuth();
-  await assertOwns(userId, collectionId);
+  await assertOwnsCollection(userId, collectionId);
+  await assertOwnsLocation(userId, locationId);
   await prisma.collectionLocation.upsert({
     where: { collectionId_locationId: { collectionId, locationId } },
     create: { collectionId, locationId },
@@ -96,16 +104,18 @@ export async function removeLocationFromCollection(
   locationId: string
 ) {
   const userId = await requireAuth();
-  await assertOwns(userId, collectionId);
+  await assertOwnsCollection(userId, collectionId);
   await prisma.collectionLocation.delete({
     where: { collectionId_locationId: { collectionId, locationId } },
   });
   revalidateAppPaths(`/collections/${collectionId}`);
 }
 
+const COLLECTION_LOCATIONS_MAX = 2_000;
+
 export async function getCollectionLocations(collectionId: string) {
   const userId = await requireAuth();
-  await assertOwns(userId, collectionId);
+  await assertOwnsCollection(userId, collectionId);
   return prisma.collectionLocation.findMany({
     where: { collectionId },
     include: {
@@ -117,6 +127,7 @@ export async function getCollectionLocations(collectionId: string) {
       },
     },
     orderBy: { sortOrder: "asc" },
+    take: COLLECTION_LOCATIONS_MAX,
   });
 }
 
@@ -136,16 +147,26 @@ export async function getUserCategories() {
   return prisma.category.findMany({
     where: { OR: [{ userId }, { isSystem: true }] },
     orderBy: [{ isSystem: "asc" }, { name: "asc" }],
+    take: 200,
   });
 }
 
-/** Clone a (possibly shared) collection into the current user's atlas with copied spots. */
-export async function cloneCollection(collectionId: string) {
+/**
+ * Clone a (possibly shared) collection into the current user's atlas.
+ * Open links require `shareToken`; targeted grants / owner work without it.
+ */
+export async function cloneCollection(collectionId: string, shareToken?: string) {
   const userId = await requireAuth();
+  if (shareToken) {
+    await assertCanCloneCollectionWithToken(userId, collectionId, shareToken);
+  } else {
+    await assertCanCloneCollection(userId, collectionId);
+  }
   const source = await prisma.collection.findFirst({
     where: { id: collectionId },
     include: {
       locations: {
+        where: { location: { deletedAt: null } },
         include: {
           location: {
             select: {
@@ -156,6 +177,7 @@ export async function cloneCollection(collectionId: string) {
               altitude: true,
               address: true,
               privacy: true,
+              deletedAt: true,
             },
           },
         },
@@ -178,7 +200,9 @@ export async function cloneCollection(collectionId: string) {
   let sortOrder = 0;
   for (const cl of source.locations) {
     const loc = cl.location;
-    if (!loc) continue;
+    if (!loc || loc.deletedAt) continue;
+    // Never copy SECRET exact coordinates into another atlas
+    if (loc.privacy === "SECRET") continue;
     const created = await prisma.location.create({
       data: {
         userId,
@@ -198,12 +222,4 @@ export async function cloneCollection(collectionId: string) {
 
   revalidateAppPaths("/collections", "/locations");
   return clone;
-}
-
-async function assertOwns(userId: string, collectionId: string) {
-  const col = await prisma.collection.findFirst({
-    where: { id: collectionId, userId },
-  });
-  if (!col) throw new Error("Not found");
-  return col;
 }

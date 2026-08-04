@@ -47,6 +47,12 @@ function DriveBackupInner() {
   const [confirmRestore, setConfirmRestore] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [dryRun, setDryRun] = useState<{
+    wouldImport: number;
+    wouldSkip: number;
+    totalInBackup: number;
+    sampleTitles: string[];
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -266,6 +272,12 @@ function DriveBackupInner() {
                   setTesting(true);
                   try {
                     const r = await dryRunRestoreFromDrive();
+                    setDryRun({
+                      wouldImport: r.wouldImport,
+                      wouldSkip: r.wouldSkip,
+                      totalInBackup: r.totalInBackup,
+                      sampleTitles: r.sampleTitles,
+                    });
                     toast({
                       title: t("driveDryRunOk"),
                       description: t("driveDryRunDetail", {
@@ -298,11 +310,43 @@ function DriveBackupInner() {
             </p>
           )}
 
+          {dryRun && (
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2 text-xs">
+              <p className="font-semibold text-sm">{t("driveConflictTitle")}</p>
+              <p className="text-muted-foreground">
+                {t("driveDryRunDetail", {
+                  import: dryRun.wouldImport,
+                  skip: dryRun.wouldSkip,
+                  total: dryRun.totalInBackup,
+                })}
+              </p>
+              {dryRun.wouldSkip > 0 && (
+                <p className="text-amber-700 dark:text-amber-300 flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  {t("driveConflictSkipHint", { count: dryRun.wouldSkip })}
+                </p>
+              )}
+              {dryRun.sampleTitles.length > 0 && (
+                <ul className="list-disc list-inside text-muted-foreground space-y-0.5">
+                  {dryRun.sampleTitles.map((title) => (
+                    <li key={title} className="truncate">{title}</li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-muted-foreground">{t("driveConflictMergeHint")}</p>
+            </div>
+          )}
+
           {/* Restore confirm inline */}
           {confirmRestore && (
             <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span className="flex-1">{t("driveRestoreConfirm")}</span>
+              <span className="flex-1">
+                {t("driveRestoreConfirm")}
+                {dryRun && dryRun.wouldSkip > 0
+                  ? ` ${t("driveConflictSkipHint", { count: dryRun.wouldSkip })}`
+                  : ""}
+              </span>
               <Button size="sm" variant="outline" className="h-7 text-xs rounded-lg" disabled={restoring} onClick={handleRestore}>
                 {restoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t("driveRestore")}
               </Button>

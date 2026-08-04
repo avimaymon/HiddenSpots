@@ -132,7 +132,7 @@ export function Sidebar({ user }: SidebarProps) {
             {!collapsed && (
               <>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold truncate">{user.name ?? "Explorer"}</p>
+                  <p className="text-xs font-semibold truncate">{user.name ?? t("explorer")}</p>
                   <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
                 </div>
                 <Button
@@ -152,7 +152,7 @@ export function Sidebar({ user }: SidebarProps) {
         {/* Collapse toggle — sits on the outer edge, flips in RTL */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
           className="absolute -end-3 top-[4.5rem] z-20 hidden md:flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background shadow-md hover:bg-muted hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {/* LTR: open=ChevronLeft, collapsed=ChevronRight (rotate-180). RTL: mirror. */}

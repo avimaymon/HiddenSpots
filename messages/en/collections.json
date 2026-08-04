@@ -28,5 +28,8 @@
   "noLocationsHint": "Add locations from the map",
   "addToCollectionTitle": "Add to Collection",
   "removeFromCollection": "Removed from collection",
-  "noCollectionsHint": "No collections yet. Create one from the Collections page."
+  "noCollectionsHint": "No collections yet. Create one from the Collections page.",
+  "savedOffline": "Saved on device — will sync when online",
+  "pendingSync": "Pending sync",
+  "pendingSyncHint": "Available on the map after you're back online and sync finishes"
 }

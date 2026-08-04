@@ -34,6 +34,13 @@ describe("parseHebrewQuery", () => {
   it("returns empty for blank", () => {
     expect(parseHebrewQuery("   ").matched).toEqual([]);
   });
+
+  it("maps Negev region with waterfalls", () => {
+    const f = parseHebrewQuery("מפלים בנגב");
+    expect(f.categoryNameEn).toBe("Waterfall");
+    expect(f.regionLabel).toBe("נגב");
+    expect(f.region?.minLat).toBeLessThan(31);
+  });
 });
 
 describe("matchLocationAgainstNl", () => {
@@ -55,5 +62,21 @@ describe("matchLocationAgainstNl", () => {
   it("rejects non-dog-friendly", () => {
     const f = parseHebrewQuery("מפלים לכלבים");
     expect(matchLocationAgainstNl({ ...waterfall, isDogFriendly: false }, f)).toBe(false);
+  });
+
+  it("filters by region bbox", () => {
+    const f = parseHebrewQuery("בנגב");
+    expect(
+      matchLocationAgainstNl(
+        { ...waterfall, title: "עין עבדת", latitude: 30.8, longitude: 34.8 },
+        f
+      )
+    ).toBe(true);
+    expect(
+      matchLocationAgainstNl(
+        { ...waterfall, title: " Hermon", latitude: 33.3, longitude: 35.8 },
+        f
+      )
+    ).toBe(false);
   });
 });

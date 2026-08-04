@@ -52,7 +52,7 @@ export function FeedbackDialog() {
           <MessageSquarePlus className="h-5 w-5" />
         </button>
       </DialogTrigger>
-      <DialogContent className="rounded-2xl max-w-md">
+      <DialogContent className="rounded-2xl max-w-md" description={t("feedbackHint")}>
         <DialogHeader>
           <DialogTitle>{t("feedback")}</DialogTitle>
         </DialogHeader>

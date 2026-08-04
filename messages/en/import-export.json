@@ -16,5 +16,7 @@
   "importFailed": "Import failed",
   "importedCount": "Imported {count} spots",
   "duplicatesSkipped": "{count} duplicates skipped",
-  "errorsCount": "{count} errors"
+  "errorsCount": "{count} errors",
+  "truncatedHint": "Imported up to {processed} of {received} — split large files",
+  "rateLimited": "Too many imports — try again in a minute"
 }

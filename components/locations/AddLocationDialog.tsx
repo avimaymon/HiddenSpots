@@ -6,7 +6,17 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { locationSchema, type LocationFormData } from "@/lib/validations/schemas";
 import { createLocation, addLocationPhoto } from "@/lib/actions/locations";
 type CreatedLocation = Awaited<ReturnType<typeof createLocation>>;
+/** Online create returns full Prisma row; offline pin only needs map fields. */
+export type LocationCreatedPayload = Pick<
+  CreatedLocation,
+  "id" | "title" | "latitude" | "longitude" | "isFavorite" | "isVisited" | "categoryId"
+> & {
+  coverPhotoUrl?: string | null;
+  category: { color: string; icon: string; name: string } | null;
+  photos: { url: string }[];
+};
 import { addTagToLocation } from "@/lib/actions/tags";
+import { cacheLocationsForOffline, enqueueSync } from "@/lib/offline/db";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -19,7 +29,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, MapPin } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { PhotoUpload } from "@/components/locations/PhotoUpload";
+import { PhotoUpload, uploadLocationPhotoFile } from "@/components/locations/PhotoUpload";
 import { TagInput } from "@/components/locations/TagInput";
 import { useTranslations } from "next-intl";
 
@@ -28,7 +38,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   defaultCoords?: { lat: number; lng: number };
   categories: { id: string; name: string; color: string; icon: string }[];
-  onCreated?: (loc: CreatedLocation) => void;
+  onCreated?: (loc: LocationCreatedPayload) => void;
 }
 
 export function AddLocationDialog({ open, onOpenChange, defaultCoords, categories, onCreated }: Props) {
@@ -37,6 +47,7 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
   const [loading, setLoading] = useState(false);
   const [pendingTags, setPendingTags] = useState<string[]>([]);
   const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
+  const [pendingPhotoFiles, setPendingPhotoFiles] = useState<File[]>([]);
 
   const form = useForm<LocationFormData>({
     resolver: zodResolver(locationSchema),
@@ -109,9 +120,66 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
   async function onSubmit(data: LocationFormData) {
     setLoading(true);
     try {
+      if (!navigator.onLine) {
+        const clientId = crypto.randomUUID();
+        await enqueueSync("create", {
+          ...data,
+          clientId,
+          // Tags need a real id — queue core spot; photos after remap (ponytail).
+        });
+        const cat = categories.find((c) => c.id === data.categoryId) ?? null;
+        await cacheLocationsForOffline([
+          {
+            id: clientId,
+            title: data.title,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            category: cat,
+            isFavorite: data.isFavorite ?? false,
+            isVisited: false,
+            coverPhotoUrl: null,
+          },
+        ]);
+        onCreated?.({
+          id: clientId,
+          title: data.title,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          isFavorite: data.isFavorite ?? false,
+          isVisited: false,
+          coverPhotoUrl: null,
+          categoryId: data.categoryId ?? null,
+          category: cat
+            ? { color: cat.color, icon: cat.icon, name: cat.name }
+            : null,
+          photos: [],
+        });
+        localStorage.removeItem("hiddenspots_add_location_draft");
+        toast({
+          title: t("savedOffline"),
+          description:
+            pendingPhotoFiles.length || pendingPhotos.length
+              ? t("photosSkippedOffline")
+              : undefined,
+          variant: "success",
+        });
+        setPendingPhotos([]);
+        setPendingPhotoFiles([]);
+        setPendingTags([]);
+        form.reset();
+        onOpenChange(false);
+        return;
+      }
+
       const loc = await createLocation(data);
+      for (let i = 0; i < pendingPhotoFiles.length; i++) {
+        const url = await uploadLocationPhotoFile(pendingPhotoFiles[i], loc.id);
+        await addLocationPhoto(loc.id, url, i === 0);
+      }
+      // Legacy: already-uploaded URLs (edit parity / older callers)
       for (let i = 0; i < pendingPhotos.length; i++) {
-        await addLocationPhoto(loc.id, pendingPhotos[i], i === 0);
+        if (pendingPhotos[i].startsWith("blob:")) continue;
+        await addLocationPhoto(loc.id, pendingPhotos[i], pendingPhotoFiles.length === 0 && i === 0);
       }
       for (const tag of pendingTags) {
         await addTagToLocation(loc.id, tag);
@@ -120,8 +188,22 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
       const { markHasSavedSpot } = await import("@/lib/pwa/first-spot");
       markHasSavedSpot();
       toast({ title: t("savedToast"), variant: "success" });
-      onCreated?.(loc);
+      onCreated?.({
+        id: loc.id,
+        title: loc.title,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        isFavorite: loc.isFavorite,
+        isVisited: loc.isVisited,
+        coverPhotoUrl: loc.photos[0]?.url ?? null,
+        categoryId: loc.categoryId,
+        category: loc.category
+          ? { color: loc.category.color, icon: loc.category.icon, name: loc.category.name }
+          : null,
+        photos: loc.photos.map((p) => ({ url: p.url })),
+      });
       setPendingPhotos([]);
+      setPendingPhotoFiles([]);
       setPendingTags([]);
       form.reset();
     } catch (e) {
@@ -139,6 +221,7 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        description={t("addNew")}
         className="max-w-2xl sm:max-w-2xl overflow-y-auto"
         style={{ maxHeight: "calc(100dvh - var(--keyboard-height, 0px) - 2rem)" }}
       >
@@ -300,26 +383,26 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
               </div>
 
               <div className="space-y-1.5">
-                <Label>Visiting Tips</Label>
-                <Textarea placeholder="Best time of day, what to bring, parking tips…" rows={2} {...register("tips")} />
+                <Label>{t("fieldTips")}</Label>
+                <Textarea placeholder={t("fieldTipsPlaceholder")} rows={2} {...register("tips")} />
               </div>
 
               <div className="space-y-1.5">
-                <Label>Accessibility</Label>
+                <Label>{t("fieldAccessibility")}</Label>
                 <Select onValueChange={(v) => setValue("accessibilityLevel" as keyof LocationFormData, v as never)}>
-                  <SelectTrigger><SelectValue placeholder="Choose accessibility…" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("fieldAccessibilityPlaceholder")} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="wheelchair">♿ Wheelchair accessible</SelectItem>
-                    <SelectItem value="stroller">🍼 Stroller friendly</SelectItem>
-                    <SelectItem value="elderly">👴 Elderly friendly</SelectItem>
-                    <SelectItem value="challenging">⛰️ Challenging terrain</SelectItem>
+                    <SelectItem value="wheelchair">{t("accessWheelchair")}</SelectItem>
+                    <SelectItem value="stroller">{t("accessStroller")}</SelectItem>
+                    <SelectItem value="elderly">{t("accessElderly")}</SelectItem>
+                    <SelectItem value="challenging">{t("accessChallenging")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-1.5">
-                <Label>Hazard Alert</Label>
-                <Input placeholder="Current hazard note (e.g. trail closed)" {...register("hazardNote")} />
+                <Label>{t("fieldHazard")}</Label>
+                <Input placeholder={t("fieldHazardPlaceholder")} {...register("hazardNote")} />
                 <Input type="date" {...register("hazardExpiresAt")} className="mt-1.5" />
               </div>
             </TabsContent>
@@ -328,6 +411,9 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
             <TabsContent value="photos">
               <PhotoUpload
                 onUploadComplete={(url) => setPendingPhotos((p) => [...p, url])}
+                onFilesSelected={(files) =>
+                  setPendingPhotoFiles((prev) => [...prev, ...files])
+                }
               />
             </TabsContent>
 
@@ -343,7 +429,7 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
                 <p className="text-xs text-muted-foreground">{t("fieldTagsHint")}</p>
               </div>
               <div className="space-y-1.5">
-                <Label>Vibe</Label>
+                <Label>{t("fieldVibe")}</Label>
                 <div className="flex flex-wrap gap-2">
                   {(["calm", "adventurous", "photogenic", "romantic", "family", "solitude", "spiritual", "lively"] as const).map((v) => {
                     const vibes: string[] = (watch as (n: string) => string[])("vibes") ?? [];
@@ -358,7 +444,7 @@ export function AddLocationDialog({ open, onOpenChange, defaultCoords, categorie
                         }}
                         className={`px-3 py-1 rounded-full text-xs border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted"}`}
                       >
-                        {v}
+                        {t(`vibes.${v}`)}
                       </button>
                     );
                   })}

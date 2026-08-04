@@ -19,12 +19,26 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-async function sendResetEmail(email: string, resetUrl: string) {
+async function sendResetEmail(
+  email: string,
+  resetUrl: string,
+  locale: "he" | "en"
+) {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    console.info(`[password-reset] ${email} → ${resetUrl}`);
+    // Never log reset URLs outside local development (token in URL)
+    if (process.env.NODE_ENV === "development") {
+      console.info(`[password-reset] ${email} → ${resetUrl}`);
+    }
     return { emailed: false as const, resetUrl };
   }
+
+  const subject =
+    locale === "en" ? "Reset your password — HiddenSpots" : "איפוס סיסמה — HiddenSpots";
+  const html =
+    locale === "en"
+      ? `<p>Click to reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in one hour.</p>`
+      : `<p dir="rtl">לחצו לאיפוס הסיסמה:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p dir="rtl">הקישור תקף לשעה אחת.</p>`;
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -35,8 +49,8 @@ async function sendResetEmail(email: string, resetUrl: string) {
     body: JSON.stringify({
       from: process.env.EMAIL_FROM ?? "HiddenSpots <onboarding@resend.dev>",
       to: email,
-      subject: "איפוס סיסמה — HiddenSpots",
-      html: `<p dir="rtl">לחצו לאיפוס הסיסמה:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p dir="rtl">הקישור תקף לשעה אחת.</p>`,
+      subject,
+      html,
     }),
   });
 
@@ -49,7 +63,9 @@ async function sendResetEmail(email: string, resetUrl: string) {
 
 export async function requestPasswordReset(data: unknown) {
   const { email } = requestSchema.parse(data);
-  const { ok } = await rateLimit(`pw-reset:${email.toLowerCase()}`, 3, 60 * 60 * 1000);
+  const { ok } = await rateLimit(`pw-reset:${email.toLowerCase()}`, 3, 60 * 60 * 1000, {
+    failClosed: true,
+  });
   if (!ok) throw new Error("Too many requests");
 
   const user = await prisma.user.findUnique({ where: { email } });
@@ -68,13 +84,16 @@ export async function requestPasswordReset(data: unknown) {
   });
 
   const base = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-  const resetUrl = `${base}/he/reset-password?token=${raw}`;
-  const mail = await sendResetEmail(email, resetUrl);
+  const locale = user.locale === "en" ? "en" : "he";
+  const resetUrl = `${base}/${locale}/reset-password?token=${raw}`;
+  const mail = await sendResetEmail(email, resetUrl, locale);
 
   return {
     ok: true as const,
-    // Dev-only convenience when Resend is not configured
-    ...(mail.emailed ? {} : { devResetUrl: resetUrl }),
+    // Never echo reset URLs in production (even without Resend)
+    ...(mail.emailed || process.env.NODE_ENV === "production"
+      ? {}
+      : { devResetUrl: resetUrl }),
   };
 }
 

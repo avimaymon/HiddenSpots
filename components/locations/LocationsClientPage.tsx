@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo, useRef, useTransition } from "react";
+import { useState, useMemo, useRef, useTransition, useEffect } from "react";
 import { Link } from "@/i18n/navigation";
-import { Search, Grid3x3, List, Plus, Heart, Bookmark, Eye, MapPin, X, CheckSquare, Trash2, Upload } from "lucide-react";
+import { Search, Grid3x3, List, Plus, Heart, Bookmark, Eye, MapPin, X, CheckSquare, Trash2, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +14,12 @@ import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { DriveQuickBackup } from "@/components/settings/DriveQuickBackup";
 import { StaggerItem, StaggerList } from "@/components/motion/primitives";
-import { deleteLocation } from "@/lib/actions/locations";
+import { deleteLocation, getAtlasLocationsPage } from "@/lib/actions/locations";
+import type { AtlasListCursor } from "@/lib/locations/atlas-list";
+import { enqueueSync } from "@/lib/offline/db";
+import { ID_REMAP_EVENT, type IdRemapDetail } from "@/lib/offline/entity-cache";
 import { toast } from "@/hooks/use-toast";
+import { useRouter } from "@/i18n/navigation";
 import {
   parseHebrewQuery,
   hasNlFilters,
@@ -50,14 +54,39 @@ type LocationRow = {
 
 interface Props {
   initialLocations: LocationRow[];
+  totalCount: number;
+  initialHasMore: boolean;
+  initialCursor: AtlasListCursor | null;
   categories: { id: string; name: string; color: string }[];
 }
 
 type View = "grid" | "list";
 type Filter = "all" | "favorites" | "bucket" | "visited" | "unvisited" | "stale3" | "stale6" | "stale12";
 
-export function LocationsClientPage({ initialLocations, categories }: Props) {
+export function LocationsClientPage({
+  initialLocations,
+  totalCount,
+  initialHasMore,
+  initialCursor,
+  categories,
+}: Props) {
   const t = useTranslations("locations");
+  const router = useRouter();
+  const [locations, setLocations] = useState(initialLocations);
+
+  useEffect(() => {
+    function onRemap(e: Event) {
+      const { clientId, serverId } = (e as CustomEvent<IdRemapDetail>).detail;
+      setLocations((prev) =>
+        prev.map((l) => (l.id === clientId ? { ...l, id: serverId } : l))
+      );
+    }
+    window.addEventListener(ID_REMAP_EVENT, onRemap);
+    return () => window.removeEventListener(ID_REMAP_EVENT, onRemap);
+  }, []);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [cursor, setCursor] = useState<AtlasListCursor | null>(initialCursor);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [view, setView] = useState<View>("grid");
@@ -67,9 +96,32 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
   const [sort, setSort] = useState<string>("updated");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [batchMode, setBatchMode] = useState(false);
   const [isPending, startTransition] = useTransition();
   const { latitude: gpsLat, longitude: gpsLng } = useGeolocation(true);
+
+  async function handleLoadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await getAtlasLocationsPage({ cursor });
+      setLocations((prev) => {
+        const seen = new Set(prev.map((l) => l.id));
+        const merged = [...prev];
+        for (const loc of page.locations) {
+          if (!seen.has(loc.id)) merged.push(loc as LocationRow);
+        }
+        return merged;
+      });
+      setHasMore(page.hasMore);
+      setCursor(page.nextCursor);
+    } catch {
+      toast({ title: t("loadMoreFailed"), variant: "destructive" });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
   const gps =
     gpsLat != null && gpsLng != null
       ? { latitude: gpsLat, longitude: gpsLng }
@@ -89,9 +141,20 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
 
   function handleBatchDelete() {
     if (!selectedIds.size) return;
+    const count = selectedIds.size;
+    if (!confirm(t("batchDeleteConfirm", { count }))) return;
+    const ids = [...selectedIds];
     startTransition(async () => {
-      for (const id of selectedIds) await deleteLocation(id);
-      toast({ title: `Deleted ${selectedIds.size} spot(s)`, variant: "success" });
+      if (!navigator.onLine) {
+        for (const id of ids) await enqueueSync("delete", { locationId: id });
+        setHiddenIds((prev) => new Set([...prev, ...ids]));
+        toast({ title: t("batchDeletedOffline", { count }), variant: "success" });
+      } else {
+        for (const id of ids) await deleteLocation(id);
+        setHiddenIds((prev) => new Set([...prev, ...ids]));
+        toast({ title: t("batchDeleted", { count }), variant: "success" });
+        router.refresh();
+      }
       setSelectedIds(new Set());
       setBatchMode(false);
     });
@@ -99,20 +162,20 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
 
   const allTags = useMemo(() => {
     const map = new Map<string, string>();
-    for (const loc of initialLocations) {
+    for (const loc of locations) {
       for (const { tag } of loc.tags) {
         map.set(tag.id, tag.name);
       }
     }
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [initialLocations]);
+  }, [locations]);
 
   const nl = search.trim() ? parseHebrewQuery(search) : null;
   const nlActive = Boolean(nl && hasNlFilters(nl));
 
   // ponytail: no manual useMemo — React Compiler handles memoization automatically
   function getFiltered() {
-    let locs = initialLocations;
+    let locs = locations.filter((l) => !hiddenIds.has(l.id));
 
     if (search.trim()) {
       if (nl && hasNlFilters(nl)) {
@@ -165,9 +228,9 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
     { value: "bucket", label: t("filters.bucketList"), icon: <Bookmark className="h-3.5 w-3.5" /> },
     { value: "visited", label: t("filters.visited"), icon: <Eye className="h-3.5 w-3.5" /> },
     { value: "unvisited", label: t("filters.notVisited"), icon: null },
-    { value: "stale3", label: "Stale 3m", icon: null },
-    { value: "stale6", label: "Stale 6m", icon: null },
-    { value: "stale12", label: "Stale 1y", icon: null },
+    { value: "stale3", label: t("filters.stale3"), icon: null },
+    { value: "stale6", label: t("filters.stale6"), icon: null },
+    { value: "stale12", label: t("filters.stale12"), icon: null },
   ];
 
   return (
@@ -245,7 +308,7 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
 
       <PageHeader
         title={t("title")}
-        description={`${initialLocations.length} ${t("filters.all").toLowerCase()}`}
+        description={t("listCount", { shown: locations.length, total: totalCount })}
       >
         {/* Mobile: Search icon opens full-screen search */}
         <Button
@@ -263,7 +326,7 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
           size="icon-sm"
           className="rounded-xl"
           onClick={() => { setBatchMode((v) => !v); setSelectedIds(new Set()); }}
-          title="Select multiple"
+          title={t("batchSelect")}
         >
           <CheckSquare className="h-4 w-4" />
         </Button>
@@ -278,8 +341,10 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
 
       {batchMode && selectedIds.size > 0 && (
         <div className="flex items-center gap-2 px-4 sm:px-6 py-2 bg-primary/5 border-b border-border/50">
-          <span className="text-sm font-medium">{selectedIds.size} selected</span>
-          <Button variant="ghost" size="sm" onClick={selectAll} className="rounded-xl text-xs h-7">Select all</Button>
+          <span className="text-sm font-medium">{t("batchSelected", { count: selectedIds.size })}</span>
+          <Button variant="ghost" size="sm" onClick={selectAll} className="rounded-xl text-xs h-7">
+            {t("batchSelectAll")}
+          </Button>
           <div className="flex-1" />
           <Button
             variant="destructive"
@@ -288,8 +353,8 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
             onClick={handleBatchDelete}
             disabled={isPending}
           >
-            <Trash2 className="h-3.5 w-3.5 mr-1" />
-            Delete
+            <Trash2 className="h-3.5 w-3.5 me-1" />
+            {t("batchDelete")}
           </Button>
         </div>
       )}
@@ -349,7 +414,7 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
                   "px-3 py-2 transition-colors touch-target",
                   view === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted/80"
                 )}
-                aria-label="Grid view"
+                aria-label={t("viewGrid")}
               >
                 <Grid3x3 className="h-4 w-4" />
               </button>
@@ -359,7 +424,7 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
                   "px-3 py-2 transition-colors touch-target",
                   view === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted/80"
                 )}
-                aria-label="List view"
+                aria-label={t("viewList")}
               >
                 <List className="h-4 w-4" />
               </button>
@@ -385,9 +450,15 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
           ))}
         </div>
 
-        {filtered.length !== initialLocations.length && (
+        {filtered.length !== locations.length && (
           <p className="text-xs text-muted-foreground">
-            <Badge variant="secondary" className="mx-0.5 text-[10px] px-1.5">{filtered.length}</Badge> / {initialLocations.length}
+            <Badge variant="secondary" className="mx-0.5 text-[10px] px-1.5">{filtered.length}</Badge> / {locations.length}
+          </p>
+        )}
+
+        {totalCount > locations.length && (
+          <p className="text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/50 rounded-xl px-3 py-2">
+            {t("listTruncatedHint", { shown: locations.length, total: totalCount })}
           </p>
         )}
       </div>
@@ -422,6 +493,20 @@ export function LocationsClientPage({ initialLocations, categories }: Props) {
               </StaggerItem>
             ))}
           </StaggerList>
+        )}
+
+        {hasMore && (
+          <div className="flex justify-center pt-4 pb-2">
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              disabled={loadingMore}
+              onClick={() => void handleLoadMore()}
+            >
+              {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t("loadMore")}
+            </Button>
+          </div>
         )}
       </div>
     </div>

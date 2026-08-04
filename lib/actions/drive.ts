@@ -13,6 +13,7 @@ import {
   resolveDriveAccessToken,
   type BackupCoreResult,
 } from "@/lib/drive/backup-core";
+import { DUPE_SCAN_MAX } from "@/lib/export/limits";
 
 async function getGoogleAccount(userId: string) {
   return prisma.account.findFirst({
@@ -176,6 +177,8 @@ export async function dryRunRestoreFromDrive(): Promise<RestoreDryRunResult> {
   const existing = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     select: { latitude: true, longitude: true },
+    take: DUPE_SCAN_MAX,
+    orderBy: { updatedAt: "desc" },
   });
 
   let wouldImport = 0;
@@ -218,6 +221,8 @@ export async function restoreFromDrive(): Promise<RestoreResult> {
   const existing = await prisma.location.findMany({
     where: { userId, deletedAt: null },
     select: { latitude: true, longitude: true },
+    take: DUPE_SCAN_MAX,
+    orderBy: { updatedAt: "desc" },
   });
 
   let imported = 0;

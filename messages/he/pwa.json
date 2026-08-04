@@ -12,6 +12,8 @@
   "synced": "כל השינויים סונכרנו",
   "offlineBanner": "אין חיבור",
   "installHint": "הוסף למסך הבית לגישה מהירה בשטח",
+  "iosInstallTitle": "הוסף למסך הבית",
+  "iosInstallHint": "לחצו על שיתוף ← הוסף למסך הבית — כך תעבדו גם ללא רשת",
   "dismiss": "סגור",
   "syncFailed": "{count, plural, one {סנכרון אחד נכשל} other {# סנכרונים נכשלו}}",
   "syncPartial": "חלק מהשינויים לא סונכרנו",

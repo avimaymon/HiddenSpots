@@ -1,11 +1,13 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { X, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 export function Toaster() {
+  const t = useTranslations("common");
   const { toasts, dismiss } = useToast();
   const reduce = useReducedMotion();
 
@@ -60,7 +62,7 @@ export function Toaster() {
             <button
               onClick={() => dismiss(toast.id)}
               className="shrink-0 rounded-lg p-1 opacity-60 hover:opacity-100 hover:bg-muted transition-all"
-              aria-label="Dismiss"
+              aria-label={t("dismiss")}
             >
               <X className="h-4 w-4" />
             </button>

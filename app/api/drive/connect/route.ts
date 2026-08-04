@@ -4,6 +4,8 @@
  * On return, Google sends the code to /api/drive/callback.
  */
 import { auth } from "@/lib/auth/config";
+import { signDriveOAuthState } from "@/lib/auth/oauth-state";
+import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 const SCOPES = [
@@ -14,8 +16,15 @@ const SCOPES = [
 ].join(" ");
 
 function baseUrl(req: NextRequest): string {
-  // Prefer explicit env var; fall back to the request's own origin
   return process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? req.nextUrl.origin;
+}
+
+async function localeForUser(userId: string): Promise<"he" | "en"> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { locale: true },
+  });
+  return user?.locale === "en" ? "en" : "he";
 }
 
 export async function GET(req: NextRequest) {
@@ -23,13 +32,20 @@ export async function GET(req: NextRequest) {
   const base = baseUrl(req);
 
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/signin", base));
+    return NextResponse.redirect(new URL("/he/signin", base));
   }
 
+  const locale = await localeForUser(session.user.id);
   const clientId = process.env.AUTH_GOOGLE_ID;
   if (!clientId) {
-    // Misconfigured — send back to settings with error rather than crashing
-    return NextResponse.redirect(`${base}/settings?drive=error`);
+    return NextResponse.redirect(`${base}/${locale}/settings?drive=error`);
+  }
+
+  let state: string;
+  try {
+    state = signDriveOAuthState(session.user.id);
+  } catch {
+    return NextResponse.redirect(`${base}/${locale}/settings?drive=error`);
   }
 
   const params = new URLSearchParams({
@@ -38,8 +54,8 @@ export async function GET(req: NextRequest) {
     response_type: "code",
     scope: SCOPES,
     access_type: "offline",
-    prompt: "consent", // ensures refresh_token is always returned
-    state: session.user.id,
+    prompt: "consent",
+    state,
   });
 
   return NextResponse.redirect(

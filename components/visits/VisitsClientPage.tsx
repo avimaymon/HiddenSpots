@@ -1,36 +1,72 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { Link } from "@/i18n/navigation";
 import Image from "next/image";
-import { format } from "date-fns";
-import { Eye, Star, MapPin, Trash2 } from "lucide-react";
+import { Eye, Star, MapPin, Trash2, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
-import { deleteVisit } from "@/lib/actions/visits";
+import { deleteVisit, getVisitsPage } from "@/lib/actions/visits";
 import { toast } from "@/hooks/use-toast";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { formatLocalizedDate } from "@/lib/utils";
 
-type Visit = Awaited<ReturnType<typeof import("@/lib/actions/visits").getVisits>>[number];
+type Visit = Awaited<ReturnType<typeof getVisitsPage>>["items"][number];
 
 interface Props {
   initialVisits: Visit[];
+  totalCount: number;
+  initialHasMore: boolean;
+  initialNextSkip: number;
 }
 
-export function VisitsClientPage({ initialVisits }: Props) {
+export function VisitsClientPage({
+  initialVisits,
+  totalCount,
+  initialHasMore,
+  initialNextSkip,
+}: Props) {
   const t = useTranslations("visits");
+  const locale = useLocale();
+  const [visits, setVisits] = useState(initialVisits);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [nextSkip, setNextSkip] = useState(initialNextSkip);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pending, startTransition] = useTransition();
 
   async function handleDelete(id: string) {
     if (!confirm(t("deleteConfirm"))) return;
-    await deleteVisit(id);
-    toast({ title: t("deleted") });
-    window.location.reload();
+    startTransition(async () => {
+      try {
+        await deleteVisit(id);
+        setVisits((prev) => prev.filter((v) => v.id !== id));
+        toast({ title: t("deleted") });
+      } catch {
+        toast({ title: t("logFailed"), variant: "destructive" });
+      }
+    });
+  }
+
+  async function loadMore() {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await getVisitsPage({ skip: nextSkip });
+      setVisits((prev) => [...prev, ...page.items]);
+      setHasMore(page.hasMore);
+      setNextSkip(page.nextSkip);
+    } catch {
+      toast({ title: t("logFailed"), variant: "destructive" });
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   return (
     <div className="flex flex-col h-full min-h-0">
       <PageHeader
         title={t("title")}
-        description={t("description", { count: initialVisits.length })}
+        description={t("description", { count: totalCount })}
       >
         <Button asChild size="sm" className="rounded-xl">
           <Link href="/app">{t("logOnMap")}</Link>
@@ -38,7 +74,7 @@ export function VisitsClientPage({ initialVisits }: Props) {
       </PageHeader>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6">
-        {initialVisits.length === 0 ? (
+        {visits.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[40dvh] text-center gap-4">
             <Eye className="h-12 w-12 text-muted-foreground/30" />
             <p className="font-semibold">{t("empty")}</p>
@@ -46,7 +82,7 @@ export function VisitsClientPage({ initialVisits }: Props) {
           </div>
         ) : (
           <div className="space-y-2 max-w-2xl">
-            {initialVisits.map((visit) => {
+            {visits.map((visit) => {
               const photo = visit.location.photos[0];
               return (
                 <div
@@ -66,7 +102,7 @@ export function VisitsClientPage({ initialVisits }: Props) {
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-sm truncate">{visit.location.title}</p>
                       <p className="text-xs text-muted-foreground">
-                        {format(new Date(visit.visitedAt), "EEEE, MMM d, yyyy")}
+                        {formatLocalizedDate(visit.visitedAt, "EEEE, MMM d, yyyy", locale)}
                       </p>
                       {visit.rating && (
                         <div className="flex gap-0.5 mt-0.5">
@@ -84,6 +120,7 @@ export function VisitsClientPage({ initialVisits }: Props) {
                     variant="ghost"
                     size="icon-sm"
                     className="text-destructive rounded-lg opacity-0 group-hover:opacity-100 shrink-0"
+                    disabled={pending}
                     onClick={() => handleDelete(visit.id)}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -91,6 +128,19 @@ export function VisitsClientPage({ initialVisits }: Props) {
                 </div>
               );
             })}
+            {hasMore && (
+              <div className="pt-3 flex justify-center">
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  disabled={loadingMore}
+                  onClick={() => void loadMore()}
+                >
+                  {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {t("loadMore")}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

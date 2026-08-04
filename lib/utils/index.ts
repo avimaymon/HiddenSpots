@@ -1,19 +1,47 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { format } from "date-fns";
+import { he, enUS } from "date-fns/locale";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)}m`;
-  return `${(meters / 1000).toFixed(1)}km`;
+/** Escape text for safe interpolation into HTML (print cards, etc.). */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-export function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes}min`;
+/** Locale-aware date-fns format (Hebrew-first). */
+export function formatLocalizedDate(
+  date: Date | string | number,
+  pattern: string,
+  locale = "he"
+): string {
+  const d = date instanceof Date ? date : new Date(date);
+  return format(d, pattern, { locale: locale.startsWith("he") ? he : enUS });
+}
+
+/** Hebrew-first units; pass `en` for English secondary locale. */
+export function formatDistance(meters: number, locale = "he"): string {
+  const he = locale.startsWith("he");
+  if (meters < 1000) return he ? `${Math.round(meters)} מ׳` : `${Math.round(meters)}m`;
+  const km = (meters / 1000).toFixed(1);
+  return he ? `${km} ק״מ` : `${km}km`;
+}
+
+/** Hebrew-first duration; pass `en` for English. */
+export function formatDuration(minutes: number, locale = "he"): string {
+  const he = locale.startsWith("he");
+  if (minutes < 60) return he ? `${minutes} דק׳` : `${minutes}min`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
+  if (he) return m > 0 ? `${h} שע׳ ${m} דק׳` : `${h} שע׳`;
   return m > 0 ? `${h}h ${m}min` : `${h}h`;
 }
 
@@ -33,6 +61,7 @@ export function getDistanceBetween(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** Random offset within radius (tests / one-off). Prefer fuzzyCoordsStable for shares. */
 export function fuzzyCoords(
   lat: number,
   lng: number,
@@ -41,6 +70,29 @@ export function fuzzyCoords(
   const radiusDeg = radiusMeters / 111320;
   const angle = Math.random() * 2 * Math.PI;
   const r = radiusDeg * Math.sqrt(Math.random());
+  return {
+    latitude: lat + r * Math.cos(angle),
+    longitude: lng + r * Math.sin(angle),
+  };
+}
+
+/** Deterministic fuzz so the same share token always shows the same pin. */
+export function fuzzyCoordsStable(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  seed: string
+): { latitude: number; longitude: number } {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const u1 = ((h >>> 0) % 10_000) / 10_000;
+  const u2 = (((h * 33) >>> 0) % 10_000) / 10_000;
+  const radiusDeg = radiusMeters / 111320;
+  const angle = u1 * 2 * Math.PI;
+  const r = radiusDeg * Math.sqrt(Math.max(u2, 0.05));
   return {
     latitude: lat + r * Math.cos(angle),
     longitude: lng + r * Math.sin(angle),

@@ -20,15 +20,8 @@ export async function getNotifications() {
 
 export async function markAllRead() {
   const userId = await requireAuth();
-  await prisma.notification.updateMany({ where: { userId, read: false }, data: { read: true } });
-}
-
-export async function createNotification(
-  userId: string,
-  type: string,
-  title: string,
-  body?: string,
-  href?: string
-) {
-  return prisma.notification.create({ data: { userId, type, title, body, href } });
+  await prisma.notification.updateMany({
+    where: { userId, read: false },
+    data: { read: true },
+  });
 }

@@ -35,21 +35,22 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   "map-pin": <MapPin className="h-4 w-4" />,
 };
 
-const PRESET_FILTERS = [
-  { label: "Favorites", filters: { isFavorite: true }, icon: "heart", color: "#f43f5e" },
-  { label: "Bucket list", filters: { isBucketList: true }, icon: "bookmark", color: "#f59e0b" },
-  { label: "Not visited", filters: { isVisited: false }, icon: "eye", color: "#8b5cf6" },
-  { label: "Recently added", filters: {}, sortBy: "createdAt", icon: "sparkles", color: "#22c55e" },
-];
-
 export function SmartViewsSection({ initialViews }: Props) {
   const t = useTranslations("dashboard");
+  const tc = useTranslations("common");
   const [views, setViews] = useState<SmartView[]>(initialViews);
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [selectedPreset, setSelectedPreset] = useState(0);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const PRESET_FILTERS = [
+    { label: t("smartPresetFavorites"), filters: { isFavorite: true }, icon: "heart", color: "#f43f5e" },
+    { label: t("smartPresetBucket"), filters: { isBucketList: true }, icon: "bookmark", color: "#f59e0b" },
+    { label: t("smartPresetNotVisited"), filters: { isVisited: false }, icon: "eye", color: "#8b5cf6" },
+    { label: t("smartPresetRecent"), filters: {}, sortBy: "createdAt", icon: "sparkles", color: "#22c55e" },
+  ];
 
   async function handleCreate() {
     if (!name.trim()) return;
@@ -67,7 +68,7 @@ export function SmartViewsSection({ initialViews }: Props) {
       setName("");
       setCreateOpen(false);
     } catch {
-      toast({ title: "Failed to create view", variant: "destructive" });
+      toast({ title: t("smartViewCreateFailed"), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -79,7 +80,7 @@ export function SmartViewsSection({ initialViews }: Props) {
       await deleteSmartView(id);
       setViews((v) => v.filter((sv) => sv.id !== id));
     } catch {
-      toast({ title: "Failed to delete view", variant: "destructive" });
+      toast({ title: t("smartViewDeleteFailed"), variant: "destructive" });
     } finally {
       setDeletingId(null);
     }
@@ -135,7 +136,7 @@ export function SmartViewsSection({ initialViews }: Props) {
                   "text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors",
                   "opacity-0 group-hover:opacity-100 focus:opacity-100"
                 )}
-                aria-label="Delete view"
+                aria-label={t("smartViewDeleteAria")}
               >
                 {deletingId === view.id ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -155,18 +156,18 @@ export function SmartViewsSection({ initialViews }: Props) {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Name</Label>
+              <Label>{t("smartViewName")}</Label>
               <Input
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-                placeholder="My view…"
+                placeholder={t("smartViewNamePlaceholder")}
                 className="rounded-xl"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Filter preset</Label>
+              <Label>{t("smartFilterPreset")}</Label>
               <div className="grid grid-cols-2 gap-2">
                 {PRESET_FILTERS.map((preset, i) => (
                   <button
@@ -190,10 +191,10 @@ export function SmartViewsSection({ initialViews }: Props) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{tc("cancel")}</Button>
             <Button onClick={handleCreate} disabled={!name.trim() || saving}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create
+              {tc("create")}
             </Button>
           </DialogFooter>
         </DialogContent>

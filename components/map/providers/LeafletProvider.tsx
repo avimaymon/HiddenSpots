@@ -72,12 +72,14 @@ export default function LeafletProvider({
   selectedId,
   onLocationClick,
   onMapClick,
+  onBoundsChange,
   isAddingLocation,
   measureMode,
   measurePoints = [],
   radiusCenter,
   radiusKm,
   tripPolyline,
+  showHeatmap,
   className,
 }: MapViewProps) {
   const t = useTranslations("map");
@@ -95,6 +97,7 @@ export default function LeafletProvider({
     setZoom(z);
     setBounds(b);
     setViewState({ ...viewState, zoom: z });
+    onBoundsChange?.({ west: b[0], south: b[1], east: b[2], north: b[3] });
   }
 
   return (
@@ -149,6 +152,26 @@ export default function LeafletProvider({
             }}
           />
         )}
+
+        {/* ponytail: density bubbles — Mapbox has native heatmap; upgrade to heat plugin if needed */}
+        {showHeatmap &&
+          locations.map((loc) => {
+            const w = Math.min(Math.max(loc.visitCount ?? (loc.isVisited ? 1 : 0), 0), 20);
+            if (w <= 0) return null;
+            return (
+              <CircleMarker
+                key={`heat-${loc.id}`}
+                center={[loc.latitude, loc.longitude]}
+                radius={10 + w * 2.5}
+                pathOptions={{
+                  color: "transparent",
+                  fillColor: "#ea580c",
+                  fillOpacity: 0.12 + (w / 20) * 0.4,
+                  weight: 0,
+                }}
+              />
+            );
+          })}
 
         {clusters.map((item) => {
           if (item.type === "cluster") {

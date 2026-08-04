@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { ALL_BADGES, type Badge } from "@/lib/badges";
 import { cn } from "@/lib/utils";
 
@@ -8,23 +9,32 @@ interface Props {
 }
 
 export function BadgesSection({ earnedIds }: Props) {
+  const t = useTranslations("dashboard.badges");
   const earned = new Set(earnedIds);
   return (
     <div>
-      <p className="text-sm font-bold mb-3 flex items-center gap-1.5">🏅 Explorer Badges</p>
+      <p className="text-sm font-bold mb-3 flex items-center gap-1.5">🏅 {t("title")}</p>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
         {ALL_BADGES.map((badge) => (
-          <BadgePill key={badge.id} badge={badge} earned={earned.has(badge.id)} />
+          <BadgePill key={badge.id} badge={badge} earned={earned.has(badge.id)} t={t} />
         ))}
       </div>
     </div>
   );
 }
 
-function BadgePill({ badge, earned }: { badge: Badge; earned: boolean }) {
+function BadgePill({
+  badge,
+  earned,
+  t,
+}: {
+  badge: Badge;
+  earned: boolean;
+  t: ReturnType<typeof useTranslations>;
+}) {
   return (
     <div
-      title={badge.description}
+      title={t(badge.descriptionKey)}
       className={cn(
         "flex flex-col items-center gap-1 p-2 rounded-xl border text-center transition-all",
         earned
@@ -33,7 +43,7 @@ function BadgePill({ badge, earned }: { badge: Badge; earned: boolean }) {
       )}
     >
       <span className="text-2xl">{badge.emoji}</span>
-      <p className="text-[10px] font-semibold leading-tight">{badge.name}</p>
+      <p className="text-[10px] font-semibold leading-tight">{t(badge.nameKey)}</p>
     </div>
   );
 }

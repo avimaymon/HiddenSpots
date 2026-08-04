@@ -12,6 +12,8 @@
   "synced": "All changes synced",
   "offlineBanner": "Offline",
   "installHint": "Add to home screen for quick field access",
+  "iosInstallTitle": "Add to Home Screen",
+  "iosInstallHint": "Tap Share → Add to Home Screen — works offline in the field",
   "dismiss": "Dismiss",
   "syncFailed": "{count, plural, one {1 sync failed} other {# syncs failed}}",
   "syncPartial": "Some changes did not sync",

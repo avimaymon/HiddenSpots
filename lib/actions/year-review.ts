@@ -14,11 +14,16 @@ export async function getYearReview(year = new Date().getFullYear()) {
   const start = new Date(year, 0, 1);
   const end = new Date(year + 1, 0, 1);
 
-  const [visits, locations, topLocations] = await Promise.all([
+  const YEAR_VISIT_SAMPLE_MAX = 5_000;
+  const [visits, visitTotal, locations, topLocations] = await Promise.all([
     prisma.visit.findMany({
       where: { userId, visitedAt: { gte: start, lt: end } },
       include: { location: { select: { title: true, latitude: true, longitude: true } } },
       orderBy: { visitedAt: "asc" },
+      take: YEAR_VISIT_SAMPLE_MAX,
+    }),
+    prisma.visit.count({
+      where: { userId, visitedAt: { gte: start, lt: end } },
     }),
     prisma.location.count({ where: { userId, createdAt: { gte: start, lt: end }, deletedAt: null } }),
     prisma.location.findMany({
@@ -35,6 +40,8 @@ export async function getYearReview(year = new Date().getFullYear()) {
   }));
 
   const uniqueSpots = new Set(visits.map((v) => v.locationId)).size;
+  // Prefer DB total when sample is capped so headline stats stay honest.
+  const totalVisits = visitTotal;
 
   const seasonMap: Record<number, string> = { 0: "winter", 1: "winter", 2: "spring", 3: "spring", 4: "spring", 5: "summer", 6: "summer", 7: "summer", 8: "fall", 9: "fall", 10: "fall", 11: "winter" };
   const seasonCounts = { spring: 0, summer: 0, fall: 0, winter: 0 };
@@ -46,11 +53,12 @@ export async function getYearReview(year = new Date().getFullYear()) {
 
   return {
     year,
-    totalVisits: visits.length,
+    totalVisits,
     uniqueSpots,
     newLocations: locations,
     byMonth,
     topLocations,
     favSeason,
+    truncated: visitTotal > visits.length,
   };
 }

@@ -12,6 +12,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { searchLocationsQuick } from "@/lib/actions/locations";
 import { parseHebrewQuery, hasNlFilters } from "@/lib/search/hebrew-nl";
+import { useGeolocation } from "@/hooks/use-geolocation";
 
 const PAGES = [
   { href: "/app", icon: Map, labelKey: "map" as const },
@@ -34,6 +35,7 @@ export function CommandPalette() {
   const router = useRouter();
   const t = useTranslations("nav");
   const tc = useTranslations("command");
+  const { latitude: myLat, longitude: myLng } = useGeolocation(false);
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
 
@@ -62,10 +64,13 @@ export function CommandPalette() {
     // All state updates are inside startTransition (async), not synchronous
     startTransition(async () => {
       if (q.length < 2) { setResults([]); return; }
-      const hits = await searchLocationsQuick(q);
+      const hits = await searchLocationsQuick(q, {
+        lat: myLat ?? undefined,
+        lng: myLng ?? undefined,
+      });
       setResults(hits);
     });
-  }, [query]);
+  }, [query, myLat, myLng]);
 
   function go(href: string) {
     setOpen(false);
@@ -153,32 +158,32 @@ export function CommandPalette() {
 
             <Command.Group heading={tc("actions")} className="text-xs text-muted-foreground px-2 py-1.5 mt-1">
               <Command.Item
-                value="add spot add location"
+                value={`${t("addSpot")} add spot location`}
                 onSelect={() => go("/app")}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm cursor-pointer aria-selected:bg-primary/10"
               >
                 <Plus className="h-4 w-4" /> {t("addSpot")}
               </Command.Item>
               <Command.Item
-                value="surprise me random"
+                value={`${t("surpriseMe")} surprise random`}
                 onSelect={() => go("/app?surprise=1")}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm cursor-pointer aria-selected:bg-primary/10"
               >
-                <Shuffle className="h-4 w-4" /> Surprise me
+                <Shuffle className="h-4 w-4" /> {t("surpriseMe")}
               </Command.Item>
               <Command.Item
-                value="import"
+                value={`${t("import")} import`}
+                onSelect={() => go("/import")}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm cursor-pointer aria-selected:bg-primary/10"
+              >
+                <Upload className="h-4 w-4" /> {t("import")}
+              </Command.Item>
+              <Command.Item
+                value={`${t("export")} export`}
                 onSelect={() => go("/settings")}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm cursor-pointer aria-selected:bg-primary/10"
               >
-                <Upload className="h-4 w-4" /> Import
-              </Command.Item>
-              <Command.Item
-                value="export"
-                onSelect={() => go("/settings")}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm cursor-pointer aria-selected:bg-primary/10"
-              >
-                <Download className="h-4 w-4" /> Export
+                <Download className="h-4 w-4" /> {t("export")}
               </Command.Item>
             </Command.Group>
           </Command.List>

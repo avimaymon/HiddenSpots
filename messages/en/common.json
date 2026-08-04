@@ -27,5 +27,9 @@
   "sendFeedback": "Send feedback",
   "feedbackThanks": "Thanks — feedback received",
   "feedbackFailed": "Could not send feedback",
-  "sending": "Sending…"
+  "sending": "Sending…",
+  "notifications": "Notifications",
+  "notificationsEmpty": "No notifications yet",
+  "dismiss": "Dismiss",
+  "undo": "Undo"
 }

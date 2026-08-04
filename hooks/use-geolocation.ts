@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocale } from "next-intl";
 import { getDistanceBetween, formatDistance } from "@/lib/utils";
 
 interface GeolocationState {
@@ -13,6 +14,7 @@ interface GeolocationState {
 }
 
 export function useGeolocation(enabled = true) {
+  const locale = useLocale();
   const [state, setState] = useState<GeolocationState>({
     latitude: null,
     longitude: null,
@@ -95,9 +97,9 @@ export function useGeolocation(enabled = true) {
     (lat: number, lng: number): string | null => {
       if (state.latitude == null || state.longitude == null) return null;
       const m = getDistanceBetween(state.latitude, state.longitude, lat, lng);
-      return formatDistance(m);
+      return formatDistance(m, locale);
     },
-    [state.latitude, state.longitude]
+    [state.latitude, state.longitude, locale]
   );
 
   return { ...state, refresh, startWatch, stopWatch, distanceTo };

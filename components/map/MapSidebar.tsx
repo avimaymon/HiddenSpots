@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useMapStore } from "@/lib/store/map";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function MapSidebar({ collections, onClose }: Props) {
+  const t = useTranslations("map");
   const { activeCollectionIds, toggleCollection, showClusters, setShowClusters } =
     useMapStore();
 
@@ -23,9 +25,9 @@ export function MapSidebar({ collections, onClose }: Props) {
           <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
             <Layers className="h-4 w-4 text-primary" />
           </div>
-          Map Layers
+          {t("layersTitle")}
         </div>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} className="rounded-xl">
+        <Button variant="ghost" size="icon-sm" onClick={onClose} className="rounded-xl" aria-label={t("cancel")}>
           <X className="h-4 w-4" />
         </Button>
       </div>
@@ -34,22 +36,22 @@ export function MapSidebar({ collections, onClose }: Props) {
         <div className="p-4 space-y-5">
           <div>
             <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-3">
-              Display
+              {t("displaySection")}
             </p>
             <div className="flex items-center justify-between rounded-xl bg-muted/30 border border-border/40 px-3 py-2.5">
-              <span className="text-sm font-medium">Cluster markers</span>
+              <span className="text-sm font-medium">{t("clusterMarkers")}</span>
               <Switch checked={showClusters} onCheckedChange={setShowClusters} />
             </div>
           </div>
 
           <div>
             <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-3">
-              Collections
+              {t("collectionsSection")}
             </p>
             {collections.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-center">
-                <p className="text-sm text-muted-foreground">No collections yet</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">Group spots into custom lists</p>
+                <p className="text-sm text-muted-foreground">{t("noCollections")}</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">{t("noCollectionsHint")}</p>
               </div>
             ) : (
               <div className="space-y-1">

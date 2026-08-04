@@ -1,0 +1,26 @@
+{
+  "title": "What's new",
+  "gotIt": "Got it!",
+  "items": {
+    "tracks": {
+      "title": "GPX tracks",
+      "body": "Record a trail in the field, save it, and show it again on the map."
+    },
+    "offline": {
+      "title": "Offline field",
+      "body": "Check-ins, favorites, and photos queue until you're back online."
+    },
+    "drive": {
+      "title": "Drive restore preview",
+      "body": "See how many spots will import vs skip as duplicates before restoring."
+    },
+    "badges": {
+      "title": "Hebrew explorer badges",
+      "body": "Night owl and early bird unlock from early/late visits."
+    },
+    "sun": {
+      "title": "Sun theme",
+      "body": "High-contrast theme for reading outdoors in bright sun."
+    }
+  }
+}

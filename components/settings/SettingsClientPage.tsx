@@ -22,14 +22,9 @@ import { toast } from "@/hooks/use-toast";
 import { useState, useRef } from "react";
 import { signOut } from "next-auth/react";
 import { useTranslations } from "next-intl";
+import { MAP_STYLES as STYLE_DEFS } from "@/lib/map/types";
 
 type Prefs = Awaited<ReturnType<typeof import("@/lib/actions/settings").getUserPreferences>>;
-
-const MAP_STYLES: Record<string, string[]> = {
-  mapbox: ["outdoors-v12", "satellite-streets-v12", "light-v11", "dark-v11"],
-  google: ["roadmap", "satellite", "terrain"],
-  leaflet: ["osm", "satellite", "topo"],
-};
 
 type Category = { id: string; name: string; color: string; icon: string; isSystem: boolean };
 
@@ -40,6 +35,7 @@ interface Props {
 
 export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
   const t = useTranslations("settings");
+  const tm = useTranslations("map");
   const { theme, setTheme } = useTheme();
   const { mapProvider, mapStyle, setMapProvider, setMapStyle } = useSettingsStore();
   const [exporting, setExporting] = useState(false);
@@ -60,7 +56,7 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
 
   function handleProviderChange(p: "mapbox" | "google" | "leaflet") {
     setMapProvider(p);
-    setMapStyle(MAP_STYLES[p][0]);
+    setMapStyle(STYLE_DEFS[p][0].id);
     savePrefs({ mapProvider: p.toUpperCase() as "MAPBOX" | "GOOGLE" | "LEAFLET" });
   }
 
@@ -80,9 +76,13 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
       a.download = `hiddenspots-gdpr-export-${new Date().toISOString().split("T")[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: t("fullExportDownloaded"), variant: "success" });
-    } catch {
-      toast({ title: t("exportFailed"), variant: "destructive" });
+      toast({
+        title: data.truncated ? t("fullExportTruncated") : t("fullExportDownloaded"),
+        variant: data.truncated ? "default" : "success",
+      });
+    } catch (e) {
+      const msg = e instanceof Error && e.message === "RATE_LIMITED" ? t("exportRateLimited") : t("exportFailed");
+      toast({ title: msg, variant: "destructive" });
     } finally {
       setExportingAll(false);
     }
@@ -122,11 +122,40 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
     }
   }
 
+  const groups = [
+    { id: "field", label: t("groupField") },
+    { id: "backup", label: t("groupBackup") },
+    { id: "sharing", label: t("groupSharing") },
+    { id: "advanced", label: t("groupAdvanced") },
+  ] as const;
+
   return (
     <div className="flex flex-col h-full min-h-0 overflow-auto">
       <PageHeader title={t("title")} description={initialPrefs?.email ?? ""} />
 
+      <nav
+        className="sticky top-0 z-20 border-b border-border/40 bg-background/90 backdrop-blur-md px-4 sm:px-6 py-2"
+        aria-label={t("jumpToSection")}
+      >
+        <div className="max-w-xl flex gap-2 overflow-x-auto scrollbar-hide" role="list">
+          {groups.map((g) => (
+            <a
+              key={g.id}
+              href={`#settings-${g.id}`}
+              role="listitem"
+              className="shrink-0 text-xs font-semibold px-3 py-2 rounded-xl border border-border/50 bg-card/80 hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+            >
+              {g.label}
+            </a>
+          ))}
+        </div>
+      </nav>
+
       <div className="p-4 sm:p-6 max-w-xl space-y-6">
+        <h2 id="settings-field" className="text-xs font-bold uppercase tracking-wide text-muted-foreground scroll-mt-16">
+          {t("groupField")}
+        </h2>
+
         <section className="rounded-2xl border border-border/50 bg-card/50 p-5 space-y-4">
           <div className="flex items-center gap-2 font-bold text-sm">
             <Map className="h-4 w-4 text-primary" /> {t("map")}
@@ -151,8 +180,10 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {MAP_STYLES[mapProvider]?.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                {STYLE_DEFS[mapProvider]?.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {tm(`styles.${s.labelKey}`)}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -178,7 +209,7 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Font size</Label>
+            <Label>{t("fontSize")}</Label>
             <Select
               defaultValue={initialPrefs?.fontSize ?? "default"}
               onValueChange={(v) => savePrefs({ fontSize: v })}
@@ -187,9 +218,9 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">Default</SelectItem>
-                <SelectItem value="large">Large</SelectItem>
-                <SelectItem value="xl">Extra Large</SelectItem>
+                <SelectItem value="default">{t("fontDefault")}</SelectItem>
+                <SelectItem value="large">{t("fontLarge")}</SelectItem>
+                <SelectItem value="xl">{t("fontXl")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -225,13 +256,13 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
           <LocaleSwitcher />
         </section>
 
+        <h2 id="settings-backup" className="text-xs font-bold uppercase tracking-wide text-muted-foreground scroll-mt-16 pt-2">
+          {t("groupBackup")}
+        </h2>
+
         <ImportSection />
 
         <DriveBackupSection />
-
-        <ActiveSharesSection />
-
-        <TrashSection />
 
         <section className="rounded-2xl border border-border/50 bg-card/50 p-5 space-y-4">
           <div className="flex items-center gap-2 font-bold text-sm">
@@ -259,6 +290,14 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
           </div>
         </section>
 
+        <h2 id="settings-sharing" className="text-xs font-bold uppercase tracking-wide text-muted-foreground scroll-mt-16 pt-2">
+          {t("groupSharing")}
+        </h2>
+
+        <ActiveSharesSection />
+
+        <TrashSection />
+
         <section className="rounded-2xl border border-border/50 bg-card/50 p-5">
           <DuplicatesSection />
         </section>
@@ -266,6 +305,10 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
         <section className="rounded-2xl border border-border/50 bg-card/50 p-5">
           <CategorySettingsSection categories={categories} />
         </section>
+
+        <h2 id="settings-advanced" className="text-xs font-bold uppercase tracking-wide text-muted-foreground scroll-mt-16 pt-2">
+          {t("groupAdvanced")}
+        </h2>
 
         <section className="rounded-2xl border border-border/50 bg-card/50 p-5">
           <PushNotificationsSection />

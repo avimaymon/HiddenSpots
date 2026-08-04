@@ -10,11 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { safeCallbackUrl } from "@/lib/auth/safe-callback-url";
+import { toast } from "@/hooks/use-toast";
 
 export function SignInForm() {
   const t = useTranslations("auth");
   const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") ?? "/he/app";
+  const callbackUrl = safeCallbackUrl(params.get("callbackUrl"), "/he/app");
   const [loading, setLoading] = useState<string | null>(null);
 
   async function handleOAuth(provider: string) {
@@ -26,12 +28,21 @@ export function SignInForm() {
     e.preventDefault();
     setLoading("email");
     const fd = new FormData(e.currentTarget);
-    await signIn("credentials", {
-      email: fd.get("email"),
-      password: fd.get("password"),
-      callbackUrl,
-    });
-    setLoading(null);
+    try {
+      const res = await signIn("credentials", {
+        email: fd.get("email"),
+        password: fd.get("password"),
+        redirect: false,
+        callbackUrl,
+      });
+      if (res?.error) {
+        toast({ title: t("invalidCredentials"), variant: "destructive" });
+        return;
+      }
+      window.location.href = res?.url || callbackUrl;
+    } finally {
+      setLoading(null);
+    }
   }
 
   return (

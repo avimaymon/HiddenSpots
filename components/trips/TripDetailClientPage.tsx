@@ -1,17 +1,16 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
 import {
   ArrowLeft, Route, MapPin, Plus, Trash2, Loader2,
   ChevronUp, ChevronDown, Share2, Calendar, Navigation, Shuffle, TrendingUp,
 } from "lucide-react";
 import * as turf from "@turf/turf";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, formatLocalizedDate } from "@/lib/utils";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -22,14 +21,17 @@ import {
   reorderTripLocations,
   deleteTrip,
 } from "@/lib/actions/trips";
+import { enqueueSync } from "@/lib/offline/db";
+import { searchLocationsForPicker } from "@/lib/actions/locations";
 import { DbShareDialog } from "@/components/shared/DbShareDialog";
 import { MapView } from "@/components/map/MapView";
 import type { MapLocation } from "@/lib/map/types";
 import { TripGoMode } from "@/components/trips/TripGoMode";
 import { toast } from "@/hooks/use-toast";
-
+import { Input } from "@/components/ui/input";
 
 type Trip = NonNullable<Awaited<ReturnType<typeof import("@/lib/actions/trips").getTripById>>>;
+type PickerLoc = Awaited<ReturnType<typeof searchLocationsForPicker>>[number];
 
 function StopWeather({ lat, lng, date }: { lat: number; lng: number; date: Date }) {
   const [temp, setTemp] = useState<string | null>(null);
@@ -51,17 +53,12 @@ function StopWeather({ lat, lng, date }: { lat: number; lng: number; date: Date 
 
 interface Props {
   trip: Trip;
-  allLocations: {
-    id: string;
-    title: string;
-    latitude: number;
-    longitude: number;
-    category: { color: string } | null;
-  }[];
+  seedLocations: PickerLoc[];
 }
 
-export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props) {
+export function TripDetailClientPage({ trip: initialTrip, seedLocations }: Props) {
   const t = useTranslations("trips");
+  const locale = useLocale();
   const tc = useTranslations("common");
   const router = useRouter();
   const [trip, setTrip] = useState(initialTrip);
@@ -75,9 +72,36 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
   const [elevations, setElevations] = useState<number[] | null>(null);
   const [loadingElevation, setLoadingElevation] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "days">("list");
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<PickerLoc[] | null>(null);
+  const [pickerLoading, setPickerLoading] = useState(false);
 
-  const existingIds = new Set(trip.locations.map((s) => s.locationId));
-  const available = allLocations.filter((l) => !existingIds.has(l.id));
+  const existingIds = useMemo(
+    () => new Set(trip.locations.map((s) => s.locationId)),
+    [trip.locations]
+  );
+  const pickerRows = pickerQuery.trim() ? (searchResults ?? []) : seedLocations;
+  const available = pickerRows.filter((l) => !existingIds.has(l.id));
+
+  useEffect(() => {
+    if (!addOpen) return;
+    const q = pickerQuery.trim();
+    if (!q) return;
+    const handle = window.setTimeout(() => {
+      setPickerLoading(true);
+      void searchLocationsForPicker({
+        query: q,
+        excludeIds: [...existingIds],
+        take: 50,
+      })
+        .then((rows) => setSearchResults(rows))
+        .catch(() => {
+          /* keep previous rows */
+        })
+        .finally(() => setPickerLoading(false));
+    }, 280);
+    return () => window.clearTimeout(handle);
+  }, [pickerQuery, addOpen, existingIds]);
 
   const tripPolyline = useMemo(() => {
     return trip.locations
@@ -95,7 +119,7 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
       .filter((s) => s.location)
       .map((s) => ({
         id: s.location!.id,
-        title: s.location!.title ?? "Stop",
+        title: s.location!.title ?? t("stopFallback"),
         latitude: s.location!.latitude,
         longitude: s.location!.longitude,
         categoryColor: s.location?.category?.color ?? trip.color,
@@ -103,12 +127,51 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
         isFavorite: false,
         isVisited: false,
       }));
-  }, [trip.locations, trip.color]);
+  }, [trip.locations, trip.color, t]);
 
   async function handleAddStop() {
     if (!selectedLocId) return;
+    const picked = available.find((l) => l.id === selectedLocId);
     setLoading(true);
     try {
+      if (!navigator.onLine) {
+        await enqueueSync("trip-add", { tripId: trip.id, locationId: selectedLocId });
+        if (picked) {
+          setTrip((prev) => {
+            const sortOrder = prev.locations.length;
+            // ponytail: slim picker row → trip-stop shape for offline UI only
+            const optimistic = {
+              id: `offline-${selectedLocId}`,
+              tripId: prev.id,
+              locationId: selectedLocId,
+              sortOrder,
+              notes: null,
+              stayDuration: null,
+              arrivalOffset: null,
+              createdAt: new Date(),
+              location: {
+                id: picked.id,
+                title: picked.title,
+                latitude: picked.latitude,
+                longitude: picked.longitude,
+                category: picked.category
+                  ? { color: picked.category.color, icon: "map-pin", name: "" }
+                  : null,
+                photos: [],
+              },
+            } as unknown as Trip["locations"][number];
+            return { ...prev, locations: [...prev.locations, optimistic] };
+          });
+        }
+        setAddOpen(false);
+        setSelectedLocId("");
+        toast({
+          title: t("stopAdded"),
+          description: t("goMode.offlineQueued"),
+          variant: "success",
+        });
+        return;
+      }
       await addLocationToTrip(trip.id, selectedLocId);
       setAddOpen(false);
       setSelectedLocId("");
@@ -121,16 +184,30 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
     }
   }
 
+  async function persistOrder(ordered: Trip["locations"]) {
+    const ids = ordered.map((s) => s.locationId);
+    const next = ordered.map((s, i) => ({ ...s, sortOrder: i }));
+    setTrip((prev) => ({ ...prev, locations: next }));
+    if (!navigator.onLine) {
+      await enqueueSync("trip-reorder", { tripId: trip.id, orderedIds: ids });
+      toast({
+        title: t("reordered"),
+        description: t("goMode.offlineQueued"),
+        variant: "success",
+      });
+      return;
+    }
+    await reorderTripLocations(trip.id, ids);
+  }
+
   async function moveStop(index: number, direction: -1 | 1) {
     const newIndex = index + direction;
     if (newIndex < 0 || newIndex >= trip.locations.length) return;
     const ordered = [...trip.locations];
     [ordered[index], ordered[newIndex]] = [ordered[newIndex], ordered[index]];
-    const ids = ordered.map((s) => s.locationId);
     setBusy(ordered[newIndex].id);
     try {
-      await reorderTripLocations(trip.id, ids);
-      setTrip((t) => ({ ...t, locations: ordered.map((s, i) => ({ ...s, sortOrder: i })) }));
+      await persistOrder(ordered);
     } catch {
       toast({ title: t("reorderFailed"), variant: "destructive" });
     } finally {
@@ -140,6 +217,16 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
 
   async function handleDeleteTrip() {
     if (!confirm(t("deleteConfirm"))) return;
+    if (!navigator.onLine) {
+      await enqueueSync("trip-delete", { tripId: trip.id });
+      toast({
+        title: t("deleted"),
+        description: t("goMode.offlineQueued"),
+        variant: "destructive",
+      });
+      router.push("/trips");
+      return;
+    }
     await deleteTrip(trip.id);
     router.push("/trips");
   }
@@ -164,15 +251,15 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
         });
         ordered.push(remaining.splice(nearest, 1)[0]);
       }
-      const ids = ordered.map((s) => s.locationId);
-      await reorderTripLocations(trip.id, ids);
-      setTrip((prev) => ({
-        ...prev,
-        locations: ordered.map((s, i) => ({ ...s, sortOrder: i })),
-      }));
-      toast({ title: "Route optimized", variant: "success" });
+      const withoutPts: Trip["locations"] = ordered.map((s) => {
+        const { pt, ...rest } = s;
+        void pt;
+        return rest;
+      });
+      await persistOrder(withoutPts);
+      toast({ title: t("routeOptimized"), variant: "success" });
     } catch {
-      toast({ title: "Optimization failed", variant: "destructive" });
+      toast({ title: t("optimizeFailed"), variant: "destructive" });
     } finally {
       setOptimizing(false);
     }
@@ -189,7 +276,7 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
       const data = await res.json() as { results: { elevation: number }[] };
       setElevations(data.results.map((r) => Math.round(r.elevation)));
     } catch {
-      toast({ title: "Elevation data unavailable", variant: "destructive" });
+      toast({ title: t("elevationUnavailable"), variant: "destructive" });
     } finally {
       setLoadingElevation(false);
     }
@@ -199,6 +286,19 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
     if (!confirm(t("removeStopConfirm"))) return;
     setBusy(locationId);
     try {
+      if (!navigator.onLine) {
+        await enqueueSync("trip-remove", { tripId: trip.id, locationId });
+        setTrip((prev) => ({
+          ...prev,
+          locations: prev.locations.filter((s) => s.locationId !== locationId),
+        }));
+        toast({
+          title: t("stopRemoved"),
+          description: t("goMode.offlineQueued"),
+          variant: "success",
+        });
+        return;
+      }
       await removeLocationFromTrip(trip.id, locationId);
       setTrip((prev) => ({
         ...prev,
@@ -224,8 +324,8 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
           {trip.startDate && (
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Calendar className="h-3 w-3" />
-              {format(new Date(trip.startDate), "MMM d, yyyy")}
-              {trip.endDate && ` — ${format(new Date(trip.endDate), "MMM d, yyyy")}`}
+              {formatLocalizedDate(trip.startDate, "MMM d, yyyy", locale)}
+              {trip.endDate && ` — ${formatLocalizedDate(trip.endDate, "MMM d, yyyy", locale)}`}
             </p>
           )}
         </div>
@@ -308,7 +408,7 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
                 const baseDate = trip.startDate ? new Date(trip.startDate) : null;
                 return [...byDay.entries()].sort(([a], [b]) => a - b).map(([day, stops]) => {
                   const dateStr = baseDate
-                    ? format(new Date(baseDate.getTime() + day * 86400000), "EEE, MMM d")
+                    ? formatLocalizedDate(new Date(baseDate.getTime() + day * 86400000), "EEE, MMM d", locale)
                     : `Day ${day + 1}`;
                   return (
                     <div key={day} className="space-y-2">
@@ -318,7 +418,7 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
                           <div className="h-7 w-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0" style={{ background: `${stop.location?.category?.color ?? trip.color}20`, color: stop.location?.category?.color ?? trip.color }}>
                             {stop.sortOrder + 1}
                           </div>
-                          <p className="font-medium text-sm flex-1 truncate">{stop.location?.title ?? "Unknown"}</p>
+                          <p className="font-medium text-sm flex-1 truncate">{stop.location?.title ?? t("stopFallback")}</p>
                         </div>
                       ))}
                     </div>
@@ -342,7 +442,7 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
                   {index + 1}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{stop.location?.title ?? "Unknown"}</p>
+                  <p className="font-medium text-sm truncate">{stop.location?.title ?? t("stopFallback")}</p>
                   {stop.location && (
                     <p className="text-xs text-muted-foreground font-mono">
                       {stop.location.latitude.toFixed(4)}, {stop.location.longitude.toFixed(4)}
@@ -419,7 +519,7 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
                 disabled={loadingElevation}
               >
                 {loadingElevation ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TrendingUp className="h-3.5 w-3.5" />}
-                Elevation
+                {t("elevation")}
               </Button>
             )}
             <Button
@@ -436,13 +536,17 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
         {elevations && elevations.length >= 2 && (
           <div className="mt-4 max-w-2xl rounded-2xl border border-border/50 p-4 bg-card/50">
             <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-              <TrendingUp className="h-3.5 w-3.5" /> Elevation profile (m)
+              <TrendingUp className="h-3.5 w-3.5" /> {t("elevationProfile")}
             </p>
             <ElevationSparkline elevations={elevations} />
             <div className="flex justify-between text-[10px] text-muted-foreground mt-1 font-mono">
-              <span>↑ max: {Math.max(...elevations)}m</span>
-              <span>↓ min: {Math.min(...elevations)}m</span>
-              <span>Δ {Math.max(...elevations) - Math.min(...elevations)}m</span>
+              <span>{t("elevationMax", { m: Math.max(...elevations) })}</span>
+              <span>{t("elevationMin", { m: Math.min(...elevations) })}</span>
+              <span>
+                {t("elevationDelta", {
+                  m: Math.max(...elevations) - Math.min(...elevations),
+                })}
+              </span>
             </div>
           </div>
         )}
@@ -459,25 +563,50 @@ export function TripDetailClientPage({ trip: initialTrip, allLocations }: Props)
         </div>
       </div>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+      <Dialog
+        open={addOpen}
+        onOpenChange={(o) => {
+          setAddOpen(o);
+          if (!o) {
+            setPickerQuery("");
+            setSelectedLocId("");
+            setSearchResults(null);
+          }
+        }}
+      >
+        <DialogContent description={t("addStopTitle")}>
           <DialogHeader>
             <DialogTitle>{t("addStopTitle")}</DialogTitle>
           </DialogHeader>
-          {available.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">{t("allSpotsAdded")}</p>
-          ) : (
-            <Select value={selectedLocId} onValueChange={setSelectedLocId}>
-              <SelectTrigger className="rounded-xl h-11">
-                <SelectValue placeholder={t("chooseSpot")} />
-              </SelectTrigger>
-              <SelectContent>
-                {available.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>{l.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <div className="space-y-3 py-1">
+            <Input
+              value={pickerQuery}
+              onChange={(e) => setPickerQuery(e.target.value)}
+              placeholder={t("searchSpotsPlaceholder")}
+              className="rounded-xl h-11"
+              autoFocus
+            />
+            {pickerLoading ? (
+              <p className="text-sm text-muted-foreground flex items-center gap-2 py-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> {tc("loading")}
+              </p>
+            ) : available.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">
+                {pickerQuery.trim() ? t("searchSpotsEmpty") : t("allSpotsAdded")}
+              </p>
+            ) : (
+              <Select value={selectedLocId} onValueChange={setSelectedLocId}>
+                <SelectTrigger className="rounded-xl h-11">
+                  <SelectValue placeholder={t("chooseSpot")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {available.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>{l.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>{tc("cancel")}</Button>
             <Button onClick={handleAddStop} disabled={loading || !selectedLocId}>

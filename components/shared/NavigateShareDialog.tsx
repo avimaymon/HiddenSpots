@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,7 @@ const APP_ICONS: Record<string, string> = {
 };
 
 export function NavigateShareDialog({ location, open, onOpenChange }: Props) {
+  const t = useTranslations("sharing");
   const [copied, setCopied] = useState<string | null>(null);
   const { distanceTo, loading: geoLoading, refresh } = useGeolocation(open);
   const links = getNavigationLinks(location);
@@ -58,17 +60,17 @@ export function NavigateShareDialog({ location, open, onOpenChange }: Props) {
     const ok = await copyToClipboard(text);
     if (ok) {
       setCopied(key);
-      toast({ title: "Copied!", description: label, variant: "success" });
+      toast({ title: t("copied"), description: label, variant: "success" });
       setTimeout(() => setCopied(null), 2000);
     } else {
-      toast({ title: "Copy failed", variant: "destructive" });
+      toast({ title: t("copyFailed"), variant: "destructive" });
     }
   }
 
   async function handleNativeShare() {
     const ok = await nativeShare(location);
     if (!ok) {
-      await handleCopy("share", getShareText(location), "Share text");
+      await handleCopy("share", getShareText(location), t("copyFullText"));
     }
   }
 
@@ -78,22 +80,21 @@ export function NavigateShareDialog({ location, open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Navigation className="h-5 w-5 text-primary" />
-            Navigate & Share
+            {t("navigateShareTitle")}
           </DialogTitle>
           <DialogDescription className="line-clamp-2">
-            {location.title ?? "Location"}
+            {location.title ?? t("locationFallback")}
             {distance && (
               <span className="block mt-1 text-primary font-medium">
-                {geoLoading ? "Getting distance…" : `${distance} from you`}
+                {geoLoading ? t("gettingDistance") : t("distanceFromYou", { distance })}
               </span>
             )}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Navigate apps */}
         <div className="space-y-2">
           <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-            Open in app
+            {t("openInApp")}
           </p>
           <div className="grid grid-cols-2 gap-2">
             {links.map((link) => (
@@ -124,78 +125,75 @@ export function NavigateShareDialog({ location, open, onOpenChange }: Props) {
           </div>
         </div>
 
-        {/* Copy & share */}
         <div className="space-y-2 pt-1">
           <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-            Share & copy
+            {t("shareAndCopy")}
           </p>
           <div className="grid grid-cols-2 gap-2">
             <CopyButton
-              label="Coordinates"
+              label={t("copyCoords")}
               sub={`${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`}
               copied={copied === "coords"}
               onClick={() =>
                 handleCopy(
                   "coords",
                   `${location.latitude}, ${location.longitude}`,
-                  "Coordinates"
+                  t("copyCoords")
                 )
               }
             />
             <CopyButton
               label="Google Maps"
-              sub="Link"
+              sub={t("copyLink")}
               copied={copied === "gmaps"}
               onClick={() =>
-                handleCopy("gmaps", buildGoogleMapsView(location), "Google Maps link")
+                handleCopy("gmaps", buildGoogleMapsView(location), t("copyGmaps"))
               }
             />
             <CopyButton
               label="Waze"
-              sub="Link"
+              sub={t("copyLink")}
               copied={copied === "waze"}
               onClick={() =>
-                handleCopy("waze", buildWazeNavigate(location), "Waze link")
+                handleCopy("waze", buildWazeNavigate(location), t("copyWaze"))
               }
             />
             <CopyButton
-              label="Full text"
-              sub="All details"
+              label={t("copyFullText")}
+              sub={t("copyAllDetails")}
               copied={copied === "text"}
-              onClick={() => handleCopy("text", getShareText(location), "Share text")}
+              onClick={() => handleCopy("text", getShareText(location), t("copyFullText"))}
             />
             <CopyButton
               label="GPX"
-              sub="Waypoint file"
+              sub={t("copyGpxSub")}
               copied={copied === "gpx"}
               onClick={() =>
-                handleCopy("gpx", buildGpxWaypoint(location), "GPX waypoint")
+                handleCopy("gpx", buildGpxWaypoint(location), t("copyGpx"))
               }
             />
           </div>
         </div>
 
-        {/* Action buttons */}
         <div className="flex flex-col gap-2 pt-1">
           <Button className="w-full rounded-xl h-11" onClick={handleNativeShare}>
             <Share2 className="h-4 w-4" />
-            Share via device
+            {t("shareViaDevice")}
           </Button>
           <Button variant="outline" className="w-full rounded-xl h-11" asChild>
             <a href={buildWhatsAppShare(location)} target="_blank" rel="noopener noreferrer">
               <MessageCircle className="h-4 w-4" />
-              Share on WhatsApp
+              {t("shareWhatsApp")}
             </a>
           </Button>
           {!distance && (
             <Button variant="ghost" size="sm" className="rounded-xl" onClick={refresh}>
               <LocateFixed className="h-4 w-4" />
-              Show distance from me
+              {t("showDistance")}
             </Button>
           )}
         </div>
 
-        {/* Coords preview */}
         <div className="rounded-xl bg-muted/40 border border-border/40 px-3 py-2.5 flex items-center gap-2 text-xs font-mono text-muted-foreground">
           <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
           <span className="truncate">

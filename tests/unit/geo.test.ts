@@ -19,16 +19,15 @@ describe("getDistanceBetween", () => {
 });
 
 describe("formatDistance", () => {
-  it("shows meters below 1km", () => {
-    expect(formatDistance(500)).toBe("500m");
+  it("Hebrew-first meters / km by default", () => {
+    expect(formatDistance(500)).toBe("500 מ׳");
+    expect(formatDistance(1500)).toBe("1.5 ק״מ");
+    expect(formatDistance(123.7)).toBe("124 מ׳");
   });
 
-  it("shows km above 1000m", () => {
-    expect(formatDistance(1500)).toBe("1.5km");
-  });
-
-  it("rounds meters", () => {
-    expect(formatDistance(123.7)).toBe("124m");
+  it("English units when locale is en", () => {
+    expect(formatDistance(500, "en")).toBe("500m");
+    expect(formatDistance(1500, "en")).toBe("1.5km");
   });
 });
 

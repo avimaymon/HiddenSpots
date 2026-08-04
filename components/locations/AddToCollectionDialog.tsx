@@ -12,6 +12,13 @@ import {
   addLocationToCollection,
   removeLocationFromCollection,
 } from "@/lib/actions/collections";
+import { enqueueSync } from "@/lib/offline/db";
+import {
+  COLLECTIONS_CACHE_KEY,
+  locationCollectionsCacheKey,
+  readEntityCache,
+  writeEntityCache,
+} from "@/lib/offline/entity-cache";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
@@ -36,25 +43,82 @@ export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props)
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    Promise.all([getCollections(), getLocationCollectionIds(locationId)]).then(
-      ([cols, memberList]) => {
+
+    async function load() {
+      if (!navigator.onLine) {
+        const cached = readEntityCache<Collection[]>(COLLECTIONS_CACHE_KEY) ?? [];
+        const members = readEntityCache<string[]>(locationCollectionsCacheKey(locationId)) ?? [];
+        setCollections(cached);
+        setMemberIds(new Set(members));
+        setLoading(false);
+        return;
+      }
+      try {
+        const [cols, memberList] = await Promise.all([
+          getCollections(),
+          getLocationCollectionIds(locationId),
+        ]);
         setCollections(cols);
         setMemberIds(new Set(memberList));
+        writeEntityCache(COLLECTIONS_CACHE_KEY, cols);
+        writeEntityCache(locationCollectionsCacheKey(locationId), memberList);
+      } catch {
+        const cached = readEntityCache<Collection[]>(COLLECTIONS_CACHE_KEY) ?? [];
+        const members = readEntityCache<string[]>(locationCollectionsCacheKey(locationId)) ?? [];
+        setCollections(cached);
+        setMemberIds(new Set(members));
+      } finally {
         setLoading(false);
       }
-    );
+    }
+
+    void load();
   }, [open, locationId]);
+
+  function persistMembers(next: Set<string>) {
+    writeEntityCache(locationCollectionsCacheKey(locationId), [...next]);
+  }
 
   async function toggle(collectionId: string) {
     setBusy(collectionId);
+    const removing = memberIds.has(collectionId);
     try {
-      if (memberIds.has(collectionId)) {
+      if (!navigator.onLine) {
+        await enqueueSync(removing ? "collection-remove" : "collection-add", {
+          collectionId,
+          locationId,
+        });
+        setMemberIds((s) => {
+          const n = new Set(s);
+          if (removing) n.delete(collectionId);
+          else n.add(collectionId);
+          persistMembers(n);
+          return n;
+        });
+        toast({
+          title: removing ? t("removeFromCollection") : t("locationAdded"),
+          description: t("savedOffline"),
+          variant: "success",
+        });
+        return;
+      }
+
+      if (removing) {
         await removeLocationFromCollection(collectionId, locationId);
-        setMemberIds((s) => { const n = new Set(s); n.delete(collectionId); return n; });
+        setMemberIds((s) => {
+          const n = new Set(s);
+          n.delete(collectionId);
+          persistMembers(n);
+          return n;
+        });
         toast({ title: t("removeFromCollection"), variant: "success" });
       } else {
         await addLocationToCollection(collectionId, locationId);
-        setMemberIds((s) => new Set(s).add(collectionId));
+        setMemberIds((s) => {
+          const n = new Set(s).add(collectionId);
+          persistMembers(n);
+          return n;
+        });
         toast({ title: t("locationAdded"), variant: "success" });
       }
     } catch {
@@ -66,7 +130,7 @@ export function AddToCollectionDialog({ locationId, open, onOpenChange }: Props)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" description={t("addToCollectionTitle")}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderPlus className="h-4 w-4 text-primary" />
