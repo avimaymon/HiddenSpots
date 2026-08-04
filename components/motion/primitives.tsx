@@ -17,7 +17,9 @@ export function FadeIn({
   return (
     <motion.div
       className={className}
-      initial={false}
+      // `initial={false}` would discard `y` entirely — the lift the landing
+      // hero asks for by passing y={18} etc. Transform-only, so no CLS.
+      initial={reduce ? false : { opacity: 0, y }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduce ? 0 : 0.45, delay: reduce ? 0 : delay, ease: EASE }}
       suppressHydrationWarning
@@ -138,7 +140,7 @@ export function PageTransition({ children, className }: { children: ReactNode; c
       className={className}
       initial={false}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: EASE }}
+      transition={{ duration: reduce ? 0 : 0.35, ease: EASE }}
       suppressHydrationWarning
     >
       {children}

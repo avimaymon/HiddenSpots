@@ -12,6 +12,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Placeholder values — no job here needs a real database or a real secret.
+  CI_AUTH_SECRET: ci-test-secret-at-least-32-characters
+  CI_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -19,23 +24,52 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npx prisma generate
       - run: node scripts/check-translations.mjs
+      # Typecheck before lint: a type error makes lint output noise.
+      # `next build` does not typecheck tests/, scripts/ or unimported files.
+      - run: npm run typecheck
       - run: npm run lint
       - run: npm test
         env:
-          AUTH_SECRET: ci-test-secret-at-least-32-characters
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
       - run: npm run build
         env:
-          AUTH_SECRET: ci-test-secret-at-least-32-characters
-          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+          AUTH_SECRET: ${{ env.CI_AUTH_SECRET }}
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+          DIRECT_URL: ${{ env.CI_DATABASE_URL }}
           AUTH_URL: http://localhost:3000
 
-  e2e-smoke:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      # Boots its own throwaway Postgres and applies the real migration
+      # history — this is what catches a migration that cannot build a fresh
+      # database, and what proves the account-deletion cascades.
+      - run: npm run test:integration
+
+  e2e:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -60,11 +94,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npx prisma generate
       - run: npx prisma migrate deploy
-      - run: npx playwright install --with-deps chromium
-      # Hard-fail smoke only — share-privacy / auth flows need seeded secrets.
-      - run: npx playwright test tests/e2e/smoke.spec.ts --project=en-ltr
+      # Next bakes `headers()` into the build manifest, so the harness opt-out
+      # has to be set here, not at server start. lib/security/headers.ts is
+      # unit-tested to confirm this drops exactly HSTS and
+      # upgrade-insecure-requests and nothing else.
+      - run: npm run build
+        env:
+          DISABLE_HTTPS_HEADERS: "1"
+      # WebKit as well as Chromium: the iPhone device presets run on WebKit, and
+      # iOS Safari is the dominant browser for a field PWA whose install flow is
+      # Safari-specific. Installing only chromium silently failed those projects.
+      - run: npx playwright install --with-deps chromium webkit
+      # All three device projects, Hebrew RTL 320px included — that is the
+      # app's primary target and it had never run in CI.
+      # Specs needing seeded credentials self-skip until TEST_* vars exist.
+      - run: npx playwright test tests/e2e/smoke.spec.ts tests/e2e/narrow-rtl.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

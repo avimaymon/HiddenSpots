@@ -13,23 +13,62 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    env:
+      # No hardcoded fallback: a wrong default silently monitors the wrong host
+      # after a domain change, which is worse than failing loudly.
+      BASE: ${{ vars.PRODUCTION_URL }}
     steps:
+      - name: Require PRODUCTION_URL
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE" ]; then
+            echo "::error::Repository variable PRODUCTION_URL is not set."
+            exit 1
+          fi
+          echo "Smoke target: $BASE"
+
       - name: Health
         run: |
           set -euo pipefail
-          BASE="${{ vars.PRODUCTION_URL || 'https://hidden-spots-ruby.vercel.app' }}"
           echo "Checking $BASE/api/health"
-          code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$BASE/api/health")
+          code=$(curl -sS -o /tmp/health.json -w "%{http_code}" --max-time 20 "$BASE/api/health")
           echo "status=$code"
           cat /tmp/health.json
           test "$code" = "200"
           grep -q '"status":"ok"\|"status": "ok"' /tmp/health.json
 
-      - name: Hebrew landing
+      - name: Public routes
         run: |
           set -euo pipefail
-          BASE="${{ vars.PRODUCTION_URL || 'https://hidden-spots-ruby.vercel.app' }}"
-          echo "Checking $BASE/he"
-          code=$(curl -sS -o /dev/null -w "%{http_code}" "$BASE/he")
-          echo "status=$code"
-          test "$code" = "200"
+          for path in /he /he/signin /en; do
+            echo "Checking $BASE$path"
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$BASE$path")
+            echo "  status=$code"
+            test "$code" = "200"
+          done
+
+      - name: Locale redirect
+        run: |
+          set -euo pipefail
+          # Bare domain must land on a locale-prefixed route, not 404.
+          url=$(curl -sS -o /dev/null -w "%{url_effective}" -L --max-time 20 "$BASE/")
+          echo "redirected to $url"
+          case "$url" in
+            */he/*|*/en/*) ;;
+            *) echo "::error::Root did not redirect into a locale: $url"; exit 1 ;;
+          esac
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.ERROR_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "ERROR_WEBHOOK_URL not set — failure is only visible in the Actions tab."
+            exit 0
+          fi
+          RUN="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          curl -sS -X POST -H 'Content-Type: application/json' \
+            -d "{\"text\":\"HiddenSpots production smoke FAILED\\n$RUN\",\"content\":\"**HiddenSpots production smoke FAILED**\\n$RUN\"}" \
+            "$WEBHOOK" || true

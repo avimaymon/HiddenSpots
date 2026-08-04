@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import withSerwistInit from "@serwist/next";
+import { buildSecurityHeaders, httpsHeadersEnabled } from "./lib/security/headers";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 const withSerwist = withSerwistInit({
@@ -9,34 +10,12 @@ const withSerwist = withSerwistInit({
   disable: process.env.NODE_ENV === "development",
 });
 
-/** Enforcing CSP — map/CDN hosts allowlisted; tighten further if report noise appears. */
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://plausible.io https://*.mapbox.com https://maps.googleapis.com https://*.googleapis.com",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.mapbox.com",
-  "img-src 'self' data: blob: https: http:",
-  "font-src 'self' data: https://fonts.gstatic.com",
-  "connect-src 'self' https: wss: blob:",
-  "worker-src 'self' blob:",
-  "child-src 'self' blob:",
-  "frame-src 'self' https://*.google.com https://*.googleapis.com",
-  "media-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'self'",
-  "upgrade-insecure-requests",
-].join("; ");
-
-const securityHeaders = [
-  { key: "X-DNS-Prefetch-Control", value: "on" },
-  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-  { key: "X-Frame-Options", value: "SAMEORIGIN" },
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self)" },
-  { key: "Content-Security-Policy", value: contentSecurityPolicy },
-];
+/**
+ * Enforcing CSP + security headers. Defined in lib/security/headers.ts so the
+ * production set is locked by a unit test — Next bakes `headers()` into the
+ * build manifest, so it cannot be asserted against a running server.
+ */
+const securityHeaders = buildSecurityHeaders(httpsHeadersEnabled);
 
 const nextConfig: NextConfig = {
   turbopack: {},
@@ -88,13 +67,6 @@ const nextConfig: NextConfig = {
       headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
     },
   ],
-  webpack: (config) => {
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      "mapbox-gl": "mapbox-gl",
-    };
-    return config;
-  },
 };
 
 export default withSerwist(withNextIntl(nextConfig));

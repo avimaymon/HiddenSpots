@@ -3,6 +3,7 @@
 import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
+import { escapeWebhookText } from "@/lib/observability/webhook";
 import { z } from "zod";
 
 const feedbackSchema = z.object({
@@ -32,12 +33,16 @@ export async function submitFeedback(data: unknown) {
 
   const webhook = process.env.ERROR_WEBHOOK_URL;
   if (webhook) {
+    // Feedback is unauthenticated free text landing in an ops channel that
+    // renders Markdown and expands mentions — escape before it gets there.
+    const message = escapeWebhookText(parsed.message);
+    const page = escapeWebhookText(parsed.page ?? "", 200);
     void fetch(webhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: `HiddenSpots feedback: ${parsed.message.slice(0, 300)}\npage=${parsed.page ?? ""} locale=${parsed.locale ?? ""} user=${userId ?? "anon"}`,
-        content: `**HiddenSpots feedback**\n${parsed.message.slice(0, 500)}\n\`${parsed.page ?? ""}\` · ${parsed.locale ?? ""}`,
+        text: `HiddenSpots feedback: ${message}\npage=${page} locale=${parsed.locale ?? ""} user=${userId ?? "anon"}`,
+        content: `**HiddenSpots feedback**\n${message}\n\`${page}\` · ${parsed.locale ?? ""}`,
       }),
     }).catch(() => {
       /* ignore webhook failures */

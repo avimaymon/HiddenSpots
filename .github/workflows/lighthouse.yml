@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
@@ -23,8 +23,12 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          # Placeholder, not the production database. Every audited route is
+          # unauthenticated and reads no data; passing secrets.DATABASE_URL into
+          # a pull_request-triggered job pointed a CI-controlled Next server at
+          # the live database on every PR.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
           AUTH_URL: http://localhost:3000
           AUTH_SECRET: ci-lighthouse-secret-at-least-32-chars
           NEXTAUTH_URL: http://localhost:3000
@@ -36,8 +40,8 @@ jobs:
         run: npm start &
         env:
           PORT: 3000
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
           AUTH_URL: http://localhost:3000
           AUTH_SECRET: ci-lighthouse-secret-at-least-32-chars
           NEXTAUTH_SECRET: ci-lighthouse-secret-at-least-32-chars
@@ -47,6 +51,10 @@ jobs:
         run: npx wait-on http://localhost:3000 --timeout 60000
 
       - name: Run Lighthouse CI
-        run: npx @lhci/cli@0.14.x autorun
+        # 0.14.x bundles Lighthouse 11, whose trace parser throws on current
+        # Chrome ("Cannot read properties of undefined (reading
+        # 'frame_sequence')") — the job could only have gone green on an old
+        # runner image.
+        run: npx @lhci/cli@0.15.x autorun
         env:
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}

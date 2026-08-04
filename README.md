@@ -23,17 +23,35 @@ Open [http://localhost:3000/he/app](http://localhost:3000/he/app).
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | Local development |
+| `npm run dev` | Local development (needs your own Postgres in `.env.local`) |
+| `npm run dev:local` | Zero-config: boots an embedded Postgres, **overwrites `.env.local`**, pushes the schema, starts Next |
 | `npm run build` | `prisma generate` + `next build` |
 | `npm run build:deploy` | Generate + `migrate deploy` + build (Vercel) |
 | `npm run db:migrate` | Create/apply migrations locally |
 | `npm run db:migrate:deploy` | Apply migrations (production) |
 | `npm run db:push` | Push schema without migration history (dev only) |
+| `npm run db:generate` | Regenerate the Prisma client |
 | `npm run db:studio` | Prisma Studio |
-| `npm run lint` | ESLint |
-| `npm test` | Vitest |
+| `npm run icons` | Regenerate PWA icons from the source SVG |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint (warnings fail) |
+| `npm test` | Vitest unit suite |
+| `npm run test:integration` | Vitest against a throwaway Postgres with the real migration history applied |
 | `npm run check:i18n` | Hebrew/English message key parity |
-| `npm run test:e2e` | Playwright smoke tests |
+| `npm run test:e2e` | Playwright — 4 specs × 3 device projects (320px RTL, 360px RTL, 390px LTR). Specs needing a session self-skip unless `TEST_EMAIL`/`TEST_PASSWORD` are set |
+
+> `npm run dev:local` writes `.env.local` unconditionally and mints a new
+> `AUTH_SECRET` each run, so it will clobber a `vercel env pull` and invalidate
+> local sessions. Use `npm run dev` if you have your own database configured.
+
+## Before you push
+
+```bash
+npm run typecheck && npm run lint && npm test && npm run check:i18n && npm run build
+```
+
+CI runs the same set, plus `npm run test:integration`, `npm audit`, and
+Playwright on all three device projects.
 
 ## Environment
 
