@@ -108,32 +108,85 @@ describe("toPublicLocation privacy", () => {
 });
 
 describe("applyPrivacy", () => {
+  /** Stand-in for the real HMAC deriver; keeps these tests free of AUTH_SECRET. */
+  const deriveSeed = (token: string, locationId: string) => `hmac(${token}/${locationId})`;
+
+  const secretLoc = (id: string) => ({
+    id,
+    title: "Hidden",
+    latitude: 32.07,
+    longitude: 34.78,
+    privacy: "SECRET",
+    address: "Hidden trailhead",
+    privateNotes: "code",
+  });
+
   it("fuzzes nested collection locations without any", () => {
     const share = applyPrivacy(
       {
         location: null,
-        collection: {
-          id: "c1",
-          locations: [
-            {
-              locationId: "l1",
-              location: {
-                id: "l1",
-                title: "Hidden",
-                latitude: 32.07,
-                longitude: 34.78,
-                privacy: "SECRET",
-                privateNotes: "code",
-              },
-            },
-          ],
-        },
+        collection: { id: "c1", locations: [{ locationId: "l1", location: secretLoc("l1") }] },
         trip: null,
       },
-      "tok"
+      "tok",
+      deriveSeed
     );
     const loc = share.collection!.locations[0].location!;
     expect(loc.privateNotes).toBeNull();
     expect(loc.latitude).not.toBe(32.07);
+  });
+
+  it("transforms every populated branch, not just the first", () => {
+    // A share row carrying more than one resource used to short-circuit on
+    // `location`, serving the collection and trip rows as raw Prisma output.
+    const share = applyPrivacy(
+      {
+        location: secretLoc("l0"),
+        collection: { id: "c1", locations: [{ locationId: "l1", location: secretLoc("l1") }] },
+        trip: { id: "t1", locations: [{ locationId: "l2", location: secretLoc("l2") }] },
+      },
+      "tok",
+      deriveSeed
+    );
+
+    for (const loc of [
+      share.location!,
+      share.collection!.locations[0].location!,
+      share.trip!.locations[0].location!,
+    ]) {
+      expect(loc.privateNotes).toBeNull();
+      expect(loc.address).toBeNull();
+      expect(loc.latitude).not.toBe(32.07);
+      expect(loc.longitude).not.toBe(34.78);
+    }
+  });
+
+  it("offset is not recoverable from the token and id the recipient already holds", () => {
+    // The exploit, asserted as a negative: seeding the fuzz with `token:id`
+    // let anyone holding the share link recompute the offset vector and
+    // subtract it back out to recover the true coordinates.
+    const token = "tok";
+    const share = applyPrivacy(
+      { location: secretLoc("l1"), collection: null, trip: null },
+      token,
+      deriveSeed
+    );
+    const published = share.location!;
+
+    const guessed = fuzzyCoordsStable(32.07, 34.78, 500, `${token}:${published.id}`);
+    expect(published.latitude).not.toBeCloseTo(guessed.latitude, 9);
+    expect(published.longitude).not.toBeCloseTo(guessed.longitude, 9);
+
+    // And the published pin must still be inside the promised radius.
+    const dist = getDistanceBetween(32.07, 34.78, published.latitude, published.longitude);
+    expect(dist).toBeGreaterThan(0);
+    expect(dist).toBeLessThan(500);
+  });
+
+  it("keeps a pin stable across repeated loads of the same share", () => {
+    const input = { location: secretLoc("l1"), collection: null, trip: null };
+    const a = applyPrivacy(input, "tok", deriveSeed).location!;
+    const b = applyPrivacy(input, "tok", deriveSeed).location!;
+    expect([a.latitude, a.longitude]).toEqual([b.latitude, b.longitude]);
   });
 });

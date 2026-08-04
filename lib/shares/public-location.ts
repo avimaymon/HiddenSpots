@@ -65,8 +65,17 @@ function mapPhotos(photos: LocInput["photos"]): PublicPhoto[] {
   return out;
 }
 
-/** Allowlisted public share DTO; strips privateNotes and fuzzes SECRET / fuzzy coords. */
-export function toPublicLocation(loc: LocInput, seed: string): PublicLocationDTO {
+/**
+ * Allowlisted public share DTO; strips privateNotes and fuzzes SECRET / fuzzy coords.
+ *
+ * `seed` may be a thunk so the caller can defer deriving it — the real deriver
+ * is keyed on AUTH_SECRET, and a share of ordinary spots should not depend on
+ * that secret just to render.
+ */
+export function toPublicLocation(
+  loc: LocInput,
+  seed: string | (() => string)
+): PublicLocationDTO {
   let latitude = loc.latitude;
   let longitude = loc.longitude;
   let address: string | null = loc.address ?? null;
@@ -76,7 +85,7 @@ export function toPublicLocation(loc: LocInput, seed: string): PublicLocationDTO
       loc.latitude,
       loc.longitude,
       loc.fuzzyRadiusMeters ?? 500,
-      seed
+      typeof seed === "function" ? seed() : seed
     );
     latitude = fuzzed.latitude;
     longitude = fuzzed.longitude;

@@ -68,11 +68,27 @@ export const tripSchema = z.object({
   privacy: z.enum(["PRIVATE", "SHARED", "PUBLIC", "SECRET"]).default("PRIVATE"),
 });
 
-export const shareSchema = z.object({
-  permission: z.enum(["VIEW", "COMMENT", "EDIT", "MANAGE"]).default("VIEW"),
-  sharedWithEmail: z.string().email().optional(),
-  expiresAt: z.string().optional(),
-  locationId: z.string().optional(),
-  collectionId: z.string().optional(),
-  tripId: z.string().optional(),
-});
+/**
+ * A share targets exactly one resource. More than one is a privacy hazard: the
+ * public share page renders whichever branch it finds, and a second resource
+ * riding along has no UI that would ever show it to the owner.
+ */
+export const shareSchema = z
+  .object({
+    permission: z.enum(["VIEW", "COMMENT", "EDIT", "MANAGE"]).default("VIEW"),
+    sharedWithEmail: z.string().email().optional(),
+    expiresAt: z.string().optional(),
+    locationId: z.string().optional(),
+    collectionId: z.string().optional(),
+    tripId: z.string().optional(),
+  })
+  .superRefine((v, ctx) => {
+    const count = [v.locationId, v.collectionId, v.tripId].filter(Boolean).length;
+    if (count !== 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "EXACTLY_ONE_RESOURCE",
+        path: ["locationId"],
+      });
+    }
+  });

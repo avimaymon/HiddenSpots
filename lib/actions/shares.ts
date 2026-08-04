@@ -13,6 +13,7 @@ import {
 } from "@/lib/permissions/resource-access";
 import { writeNotification } from "@/lib/notifications/write";
 import { applyPrivacy } from "@/lib/shares/apply-privacy";
+import { deriveShareFuzzSeed } from "@/lib/shares/fuzz-seed";
 import type { Permission } from "@prisma/client";
 import { headers } from "next/headers";
 
@@ -31,11 +32,9 @@ export async function createShare(data: unknown) {
     failClosed: true,
   });
   if (!ok) throw new Error("RATE_LIMITED");
+  // shareSchema enforces exactly one resource, so these guards are exclusive.
   const validated = shareSchema.parse(data);
 
-  if (!validated.locationId && !validated.collectionId && !validated.tripId) {
-    throw new Error("Missing resource");
-  }
   if (validated.locationId) await assertOwnsLocation(userId, validated.locationId);
   if (validated.collectionId) await assertOwnsCollection(userId, validated.collectionId);
   if (validated.tripId) await assertOwnsTrip(userId, validated.tripId);
@@ -149,7 +148,7 @@ export async function getShareByToken(token: string) {
   if (share.expiresAt && share.expiresAt < new Date()) return null;
   // Soft-deleted primary location — treat share as gone
   if (share.locationId && share.location?.deletedAt) return null;
-  return applyPrivacy(share, token);
+  return applyPrivacy(share, token, deriveShareFuzzSeed);
 }
 
 export async function listMyShares() {

@@ -19,12 +19,19 @@ import { toast } from "@/hooks/use-toast";
 import { track } from "@/lib/analytics";
 import { buildShareRecipientPreview } from "@/lib/shares/recipient-preview";
 
-interface Props {
+/**
+ * Exactly one resource per share — passing two would let a second resource ride
+ * along on the public page with no UI that ever surfaces it to the owner.
+ * Modelled as a union so misuse is a compile error, not a server-side throw.
+ */
+type ShareResource =
+  | { locationId: string; collectionId?: never; tripId?: never }
+  | { locationId?: never; collectionId: string; tripId?: never }
+  | { locationId?: never; collectionId?: never; tripId: string };
+
+type Props = ShareResource & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  locationId?: string;
-  collectionId?: string;
-  tripId?: string;
   title?: string;
   /** Prefer COMMENT for hiking-partner invites (can leave notes). */
   defaultPermission?: "VIEW" | "COMMENT" | "EDIT";
@@ -35,7 +42,7 @@ interface Props {
   hasDescription?: boolean;
   hasAddress?: boolean;
   hasPhotos?: boolean;
-}
+};
 
 export function DbShareDialog({
   open,

@@ -26,6 +26,8 @@ describe("pickCheckinTarget", () => {
   });
 
   it("handles empty list", () => {
-    expect(pickCheckinTarget([], 32, 34).reason).toBe("no_spots");
+    const pick = pickCheckinTarget([], 32, 34);
+    expect(pick.ok).toBe(false);
+    if (!pick.ok) expect(pick.reason).toBe("no_spots");
   });
 });
