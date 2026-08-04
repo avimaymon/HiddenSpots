@@ -1,5 +1,7 @@
 {
   "myLocation": "My location",
+  "sheetSpotDetailsTitle": "Spot details",
+  "sheetQuickAddTitle": "Quick add spot",
   "layers": "Layers & collections",
   "tapToPlace": "Tap the map to place your spot",
   "addSpot": "Add spot",

@@ -1,10 +1,16 @@
 import { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 import { auth } from "@/lib/auth/config";
 import { getMapPageData } from "@/lib/queries/map-data";
 import { MapClientPage } from "@/components/map/MapClientPage";
 
-export const metadata: Metadata = { title: "Map" };
+// Hardcoded English in a Hebrew-first app surfaced as the browser tab title,
+// the PWA task-switcher label and the share title.
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("nav");
+  return { title: t("map") };
+}
 
 export const dynamic = "force-dynamic";
 

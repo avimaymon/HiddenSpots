@@ -10,6 +10,7 @@ import { ServiceWorkerRegister } from "@/components/shared/ServiceWorkerRegister
 import { ClientErrorBoundary } from "@/components/shared/ClientErrorBoundary";
 import { SkipToContent } from "@/components/shared/SkipToContent";
 import { Analytics } from "@/components/shared/Analytics";
+import { directionForLocale } from "@/lib/i18n/direction";
 
 const sans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -72,10 +73,13 @@ export default async function RootLayout({
 }) {
   const locale = await getLocale();
   const messages = await getMessages();
-  const isRtl = locale === "he";
+  // Shared with the useDir hook, so a component's idea of the direction can
+  // never drift from the document's.
+  const dir = directionForLocale(locale);
+  const isRtl = dir === "rtl";
 
   return (
-    <html lang={locale} dir={isRtl ? "rtl" : "ltr"} suppressHydrationWarning>
+    <html lang={locale} dir={dir} suppressHydrationWarning>
       <body
         className={`${sans.variable} ${heebo.variable} ${display.variable} ${mono.variable} font-sans ${isRtl ? "[font-family:var(--font-hebrew),var(--font-sans)]" : ""}`}
       >

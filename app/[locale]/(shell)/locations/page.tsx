@@ -1,10 +1,14 @@
 import { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { getCategoriesForUser } from "@/lib/queries/categories";
 import { getAtlasLocationsPage } from "@/lib/actions/locations";
 import { auth } from "@/lib/auth/config";
 import { LocationsClientPage } from "@/components/locations/LocationsClientPage";
 
-export const metadata: Metadata = { title: "Locations" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("nav");
+  return { title: t("locations") };
+}
 
 export const dynamic = "force-dynamic";
 

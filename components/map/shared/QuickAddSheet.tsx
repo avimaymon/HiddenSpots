@@ -36,6 +36,7 @@ interface Props {
 export function QuickAddSheet({ open, onOpenChange, coords, categories, onCreated }: Props) {
   const t = useTranslations("locations");
   const tc = useTranslations("common");
+  const tm = useTranslations("map");
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -181,6 +182,8 @@ export function QuickAddSheet({ open, onOpenChange, coords, categories, onCreate
             paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--keyboard-height, 0px))",
           }}
         >
+          {/* Visually hidden: without it this announces as an unnamed dialog. */}
+          <Drawer.Title className="sr-only">{tm("sheetQuickAddTitle")}</Drawer.Title>
           <div className="relative">
             <SparkBurst active={spark} />
             <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-muted-foreground/25 shrink-0" />

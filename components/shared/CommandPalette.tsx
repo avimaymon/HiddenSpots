@@ -8,7 +8,13 @@ import {
   Map, List, FolderOpen, Route, LayoutDashboard, Settings,
   Plus, Footprints, Download, Upload, Search, MapPin, Loader2, Shuffle,
 } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { searchLocationsQuick } from "@/lib/actions/locations";
 import { parseHebrewQuery, hasNlFilters } from "@/lib/search/hebrew-nl";
@@ -80,6 +86,13 @@ export function CommandPalette() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="p-0 overflow-hidden max-w-lg rounded-2xl">
+        {/* Radix warns without a title, but the real cost was to screen
+            readers: this is a keyboard-first surface that announced itself as
+            an unnamed dialog. Visually hidden so the design is unchanged. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{tc("dialogTitle")}</DialogTitle>
+          <DialogDescription>{tc("dialogDescription")}</DialogDescription>
+        </DialogHeader>
         <Command className="rounded-2xl" shouldFilter={false}>
           <div className="flex items-center border-b border-border/50 px-3">
             {isPending ? (

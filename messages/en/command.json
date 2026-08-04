@@ -1,4 +1,6 @@
 {
+  "dialogTitle": "Quick search and navigation",
+  "dialogDescription": "Search spots or jump to a page. Arrow keys to move, Enter to select, Esc to close.",
   "placeholder": "Search spots or navigate… try: dog friendly waterfalls",
   "noResults": "No results",
   "navigation": "Navigation",

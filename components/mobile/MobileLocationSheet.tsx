@@ -2,6 +2,7 @@
 
 import { Drawer } from "vaul";
 import { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
 const SNAP_POINTS = ["45%", "92%"] as const;
 
 export function MobileLocationSheet({ open, onOpenChange, children }: Props) {
+  const t = useTranslations("map");
   return (
     <Drawer.Root
       open={open}
@@ -31,6 +33,10 @@ export function MobileLocationSheet({ open, onOpenChange, children }: Props) {
             "flex flex-col max-h-[92dvh] rounded-t-3xl border-t border-border/60 glass-strong shadow-float"
           )}
         >
+          {/* Visually hidden, but a dialog without an accessible name is
+              announced as just "dialog" — the sheet is the primary way spots
+              are opened on mobile, which is most of this app's use. */}
+          <Drawer.Title className="sr-only">{t("sheetSpotDetailsTitle")}</Drawer.Title>
           {/* Drag handle */}
           <div
             aria-hidden
