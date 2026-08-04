@@ -105,6 +105,10 @@ function LocationCardInner({ location, view, onClick }: Props) {
           onDragEnd={handleSwipeEnd}
           className="relative rounded-2xl overflow-hidden"
         >
+          {/* Physical right/left on purpose — do not convert to end/start.
+              The hint is chosen from info.offset.x, which is screen-space and
+              does not flip in RTL, so a logical property here would show the
+              icon on the opposite side from the direction being dragged. */}
           {swipeHint === "fav" && (
             <div className="absolute inset-y-0 right-3 flex items-center text-amber-500">
               <Heart className="h-5 w-5 fill-current" />

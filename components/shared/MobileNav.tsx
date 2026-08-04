@@ -75,7 +75,11 @@ export function MobileNav() {
                 <span className="nav-label text-[10px] font-semibold tracking-wide">{t("more")}</span>
               </button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="rounded-t-2xl pb-safe">
+            {/* safe-area-pb, not pb-safe: the latter is not a utility this
+                project (or Tailwind) defines, so it emitted nothing and the
+                sheet's content sat under the home indicator on notched
+                phones. The same file uses the correct class on the nav above. */}
+            <SheetContent side="bottom" className="rounded-t-2xl safe-area-pb">
               <SheetHeader className="pb-4">
                 <SheetTitle className="text-start font-display">{t("more")}</SheetTitle>
               </SheetHeader>

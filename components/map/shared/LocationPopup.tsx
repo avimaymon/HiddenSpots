@@ -11,8 +11,10 @@ interface Props {
 
 export function LocationPopup({ location, onClick, onNavigateMore }: Props) {
   return (
-    <div className="group text-left w-56 focus:outline-none">
-      <button type="button" onClick={onClick} className="w-full text-left focus:outline-none">
+    // Logical alignment: this popup shows Hebrew spot titles, which a physical
+    // left-alignment pinned against the RTL flow.
+    <div className="group text-start w-56 focus:outline-none">
+      <button type="button" onClick={onClick} className="w-full text-start focus:outline-none">
         {location.coverPhotoUrl && (
           <div className="relative h-28 w-full overflow-hidden rounded-t-xl">
             <Image

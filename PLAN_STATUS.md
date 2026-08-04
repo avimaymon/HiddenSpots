@@ -56,7 +56,30 @@ Updated after T70–T107: security/privacy hardening, offline create/remap/disca
 - **Invite on mobile** Collection share/invite/delete always visible on touch
 - **I’m-here offline photo** Queues Dexie blob + location photo upload with visit
 - **iOS PWA** Safari “Add to Home Screen” instructions after first spot
-- **Trust/ops** Export helpers session-bound · `deleteComment` via deleteMany · feedback → ERROR_WEBHOOK_URL
+- **Trust/ops** Export helpers session-bound · feedback → ERROR_WEBHOOK_URL
+
+## Hardening pass (branch `harden/perfect-pass`)
+
+- **Share privacy** HMAC fuzz seed keyed on `AUTH_SECRET` (was a public hash the
+  recipient could invert) · `shareSchema` enforces exactly one resource ·
+  `applyPrivacy` transforms every branch · 32-byte tokens
+- **Schema** FK cascades corrected (account deletion threw for anyone with a
+  trip stop or share) · real FKs for `Track` / `LocationHistory` · hot-path
+  indexes · `0_init` un-corrupted so a fresh database can be built
+- **Offline** Store scoped to an owner and purged on mismatch (A's queued spots
+  flushed into B on a shared device) · backoff measured from last attempt ·
+  monotonic `seq` ordering · `clientId` idempotency on every create
+- **Atomicity** `mergeLocations`, visits, photos and both clone paths run in
+  transactions; clone N+1 fixed and capped first
+- **Untrusted input** Drive backup validated before restore · email matched
+  case-insensitively · CSV formula injection · constant-time cron compare
+- **Permissions** Read path enforced like the write path · owners can moderate
+  comments on their own spots · push endpoint allowlisted
+- **CI** typecheck, integration (fresh DB + migration history), all three
+  Playwright device projects, `npm audit`
+- **A11y / perf** Touch-target CSS actually wired up · dialog names · RTL
+  direction on first render · `sizes` on all 15 fill images · map CSS off the
+  routes with no map
 
 ## Deferred
 
@@ -64,6 +87,24 @@ Updated after T70–T107: security/privacy hardening, offline create/remap/disca
 - Follow social graph (**schema kept dormant** — no migration; no product UI)
 - Phase 1 field study is human time — use the checklist outdoors for 1–2 weeks
 - Authenticated Lighthouse of `/he/app` (needs CI test credentials)
+- **Push delivery.** Subscriptions are collected, validated and stored, and the
+  endpoint is now allowlisted — but nothing sends. Finishing it means a
+  `web-push` dependency, VAPID key management and a send path wired to
+  `writeNotification`. Left as one coherent piece of work rather than started
+  and abandoned; the settings toggle is honest about state today, and the
+  security hole it would have opened is already closed.
+- **`--breakpoint-sm` → 430px (PLAN §11.4).** Currently Tailwind's 640px
+  default, so the 430–639px band gets base-tier layout. Changing it re-flows
+  every `sm:` utility in the app, and the automated checks only cover overflow
+  and touch targets on public routes — not enough to catch what that would
+  disturb. Wants a deliberate visual pass, not a one-line change late in a
+  hardening run.
+- **Lighthouse performance ≥0.90 (PLAN §19.18).** Measured 0.87 on `/he` and
+  0.85 on `/he/signin` at 320px mobile after the image and CSS work. LCP
+  (~3.9s) is what remains; FCP is 1.2s and CLS is 0.000. The gate sits at 0.78
+  — honest against measurement rather than aspirational.
+- **`noUncheckedIndexedAccess`.** 128 sites. Worth doing, but it is a
+  mechanical sweep whose diff would bury the substantive fixes in this pass.
 
 ## Verify
 

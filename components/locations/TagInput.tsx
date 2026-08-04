@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, KeyboardEvent } from "react";
+import { useTranslations } from "next-intl";
 import { X, Hash } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +13,9 @@ interface Props {
 }
 
 export function TagInput({ tags, onChange, suggestions = [], placeholder }: Props) {
-  const resolvedPlaceholder = placeholder ?? "הוסף תגית…";
+  const t = useTranslations("locations");
+  // Was a hardcoded Hebrew literal, so the English build showed Hebrew here.
+  const resolvedPlaceholder = placeholder ?? t("addTagPlaceholder");
   const [input, setInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,8 +65,8 @@ export function TagInput({ tags, onChange, suggestions = [], placeholder }: Prop
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); remove(tag); }}
-              className="ml-0.5 hover:text-destructive transition-colors"
-              aria-label={`Remove ${tag}`}
+              className="ms-0.5 hover:text-destructive transition-colors"
+              aria-label={t("removeTag", { tag })}
             >
               <X className="h-3 w-3" />
             </button>

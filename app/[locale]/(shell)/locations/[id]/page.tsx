@@ -1,4 +1,5 @@
 import { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { getLocationById } from "@/lib/actions/locations";
@@ -58,6 +59,10 @@ export default async function LocationDetailPage({ params }: Props) {
   ]);
 
   const isVerified = uniqueVisitorCount >= 3;
+  const [tl, tn] = await Promise.all([
+    getTranslations("locations"),
+    getTranslations("nav"),
+  ]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -69,11 +74,17 @@ export default async function LocationDetailPage({ params }: Props) {
         </Button>
         <h1 className="font-bold text-sm truncate flex-1">
           {loc.title}
-          {isVerified && <span className="ml-1.5 text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-1.5 py-0.5 rounded-full font-medium">✓ Verified</span>}
+          {isVerified && (
+            // ms-, not ml-: this sits beside a Hebrew title and was pinned to
+            // the left of it in RTL.
+            <span className="ms-1.5 text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-1.5 py-0.5 rounded-full font-medium">
+              ✓ {tl("verifiedBadge")}
+            </span>
+          )}
         </h1>
         <Button variant="outline" size="sm" className="rounded-xl shrink-0" asChild>
           <Link href={`/app?spot=${id}`}>
-            <Map className="h-3.5 w-3.5" /> Map
+            <Map className="h-3.5 w-3.5" /> {tn("map")}
           </Link>
         </Button>
       </div>

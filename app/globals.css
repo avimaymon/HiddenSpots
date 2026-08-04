@@ -209,6 +209,11 @@
   .fab-nature {
     background: linear-gradient(145deg, hsl(var(--primary)) 0%, hsl(152 55% 26%) 55%, hsl(var(--accent)) 160%);
     box-shadow: var(--shadow-float), 0 0 0 0 hsl(var(--primary) / 0.35);
+    /* PLAN 19.12. Without this, a quick second tap on the FAB is treated as a
+       double-tap and zooms the page instead of adding a spot — the exact
+       gesture someone makes when the first tap seems not to register, which
+       is common with gloves or wet hands in the field. */
+    touch-action: manipulation;
   }
 
   .marker-breathe {
@@ -234,6 +239,10 @@
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
+    /* PLAN 19.12. These strips are panned sideways; declaring pan-x lets the
+       browser commit to that gesture immediately rather than waiting to see
+       whether it is a double-tap, and stops a fast swipe from zooming. */
+    touch-action: pan-x;
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;

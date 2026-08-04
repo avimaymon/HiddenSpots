@@ -48,7 +48,7 @@ function StopWeather({ lat, lng, date }: { lat: number; lng: number; date: Date 
       .catch(() => {});
   }, [lat, lng, date]);
   if (!temp) return null;
-  return <span className="text-xs text-muted-foreground ml-1">🌡 {temp}</span>;
+  return <span className="text-xs text-muted-foreground ms-1">🌡 {temp}</span>;
 }
 
 interface Props {
