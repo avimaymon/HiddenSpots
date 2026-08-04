@@ -10,8 +10,16 @@ import { stripOwnerOnlyLocationFields } from "@/lib/permissions/owner-only-field
 import { isAllowedPhotoUrl } from "@/lib/media/photo-url";
 import { parseHebrewQuery, hasNlFilters } from "@/lib/search/hebrew-nl";
 import type { Prisma } from "@prisma/client";
-import { ATLAS_LIST_PAGE_SIZE, type AtlasListCursor } from "@/lib/locations/atlas-list";
+import {
+  ATLAS_LIST_PAGE_SIZE,
+  type AtlasListCursor,
+} from "@/lib/locations/atlas-list";
 import { approxDistanceMeters, DUPE_RADIUS_METERS } from "@/lib/geo/dupe";
+import {
+  LOCATION_DETAIL_PHOTOS_MAX,
+  LOCATION_DETAIL_VISITS_MAX,
+  LOCATION_DETAIL_VISIT_PHOTOS_MAX,
+} from "@/lib/export/limits";
 
 async function requireAuth() {
   const session = await auth();
@@ -64,7 +72,7 @@ export async function findNearbyDuplicates(input: {
         input.latitude,
         input.longitude,
         loc.latitude,
-        loc.longitude
+        loc.longitude,
       ) < DUPE_RADIUS_METERS
     );
   });
@@ -100,7 +108,11 @@ export async function updateLocation(id: string, data: unknown) {
       ? before
       : stripOwnerOnlyLocationFields({ ...before } as Record<string, unknown>);
     await prisma.locationHistory.create({
-      data: { locationId: id, userId, snapshot: JSON.parse(JSON.stringify(snapshot)) },
+      data: {
+        locationId: id,
+        userId,
+        snapshot: JSON.parse(JSON.stringify(snapshot)),
+      },
     });
   }
 
@@ -240,8 +252,12 @@ export async function getLocations(filters?: {
       userId,
       ...activeLocationWhere,
       ...(filters?.categoryId && { categoryId: filters.categoryId }),
-      ...(filters?.isFavorite !== undefined && { isFavorite: filters.isFavorite }),
-      ...(filters?.isBucketList !== undefined && { isBucketList: filters.isBucketList }),
+      ...(filters?.isFavorite !== undefined && {
+        isFavorite: filters.isFavorite,
+      }),
+      ...(filters?.isBucketList !== undefined && {
+        isBucketList: filters.isBucketList,
+      }),
       ...(filters?.isVisited !== undefined && { isVisited: filters.isVisited }),
       ...(filters?.search && {
         OR: [
@@ -320,12 +336,14 @@ export async function findDuplicateSpotsAction() {
     const group = [locs[i]];
     for (let j = i + 1; j < locs.length; j++) {
       if (seen.has(locs[j].id)) continue;
-      const titleMatch = locs[i].title.toLowerCase().trim() === locs[j].title.toLowerCase().trim();
+      const titleMatch =
+        locs[i].title.toLowerCase().trim() ===
+        locs[j].title.toLowerCase().trim();
       const dist = approxDistanceMeters(
         locs[i].latitude,
         locs[i].longitude,
         locs[j].latitude,
-        locs[j].longitude
+        locs[j].longitude,
       );
       if (titleMatch || dist < DUPE_RADIUS_METERS) {
         group.push(locs[j]);
@@ -346,71 +364,103 @@ export async function mergeLocations(keepId: string, deleteId: string) {
   await assertOwns(userId, deleteId);
   if (keepId === deleteId) throw new Error("Invalid merge");
 
-  // Reassign visits and photos before soft-deleting the duplicate
-  await prisma.visit.updateMany({ where: { locationId: deleteId }, data: { locationId: keepId } });
-  await prisma.locationPhoto.updateMany({ where: { locationId: deleteId }, data: { locationId: keepId } });
+  // Read the overlaps first, outside the transaction: they only determine
+  // which memberships move and which are dropped, and keeping the reads out
+  // keeps the write window short.
+  const [loserCols, loserStops] = await Promise.all([
+    prisma.collectionLocation.findMany({
+      where: { locationId: deleteId },
+      select: { collectionId: true },
+    }),
+    prisma.tripLocation.findMany({
+      where: { locationId: deleteId },
+      select: { id: true, tripId: true },
+    }),
+  ]);
 
-  // Move collection memberships (skip collections that already contain keepId)
-  const loserCols = await prisma.collectionLocation.findMany({
-    where: { locationId: deleteId },
-    select: { collectionId: true },
-  });
-  if (loserCols.length) {
-    const keepCols = new Set(
-      (
-        await prisma.collectionLocation.findMany({
-          where: { locationId: keepId, collectionId: { in: loserCols.map((c) => c.collectionId) } },
+  const [sharedCols, sharedTrips] = await Promise.all([
+    loserCols.length
+      ? prisma.collectionLocation.findMany({
+          where: {
+            locationId: keepId,
+            collectionId: { in: loserCols.map((c) => c.collectionId) },
+          },
           select: { collectionId: true },
         })
-      ).map((c) => c.collectionId)
-    );
-    for (const { collectionId } of loserCols) {
-      if (keepCols.has(collectionId)) {
-        await prisma.collectionLocation.delete({
-          where: { collectionId_locationId: { collectionId, locationId: deleteId } },
-        });
-      } else {
-        await prisma.collectionLocation.update({
-          where: { collectionId_locationId: { collectionId, locationId: deleteId } },
-          data: { locationId: keepId },
-        });
-      }
-    }
-  }
-
-  // Move trip stops (skip trips that already contain keepId)
-  const loserStops = await prisma.tripLocation.findMany({
-    where: { locationId: deleteId },
-    select: { id: true, tripId: true, sortOrder: true },
-  });
-  if (loserStops.length) {
-    const keepStops = new Set(
-      (
-        await prisma.tripLocation.findMany({
-          where: { locationId: keepId, tripId: { in: loserStops.map((s) => s.tripId) } },
+      : [],
+    loserStops.length
+      ? prisma.tripLocation.findMany({
+          where: {
+            locationId: keepId,
+            tripId: { in: loserStops.map((s) => s.tripId) },
+          },
           select: { tripId: true },
         })
-      ).map((s) => s.tripId)
-    );
-    for (const stop of loserStops) {
-      if (keepStops.has(stop.tripId)) {
-        await prisma.tripLocation.delete({ where: { id: stop.id } });
-      } else {
-        await prisma.tripLocation.update({
-          where: { id: stop.id },
-          data: { locationId: keepId },
-        });
-      }
-    }
-  }
+      : [],
+  ]);
 
-  await prisma.location.update({ where: { id: deleteId }, data: { deletedAt: new Date() } });
+  // Where the survivor is already a member, the loser's row is dropped rather
+  // than moved — moving it would violate the (collection, location) unique.
+  const dupeColIds = new Set(sharedCols.map((c) => c.collectionId));
+  const dupeTripIds = new Set(sharedTrips.map((s) => s.tripId));
+
+  const colsToDrop = loserCols.filter((c) => dupeColIds.has(c.collectionId));
+  const colsToMove = loserCols.filter((c) => !dupeColIds.has(c.collectionId));
+  const stopsToDrop = loserStops.filter((s) => dupeTripIds.has(s.tripId));
+  const stopsToMove = loserStops.filter((s) => !dupeTripIds.has(s.tripId));
+
+  /**
+   * One transaction. A merge previously ran as ~8 statements plus two per
+   * membership row, each committing on its own: a failure part-way through
+   * left the loser still visible with half its visits, photos and trip stops
+   * already reassigned to the survivor, and no way to tell how far it got.
+   *
+   * The per-row loops are also collapsed into set-based statements — six
+   * statements regardless of size, instead of 8+2N round trips to Neon.
+   */
+  // Batch form: no `timeout` option exists for it, and none is needed — the
+  // statements are sent together and never wait on application code.
+  await prisma.$transaction([
+    prisma.visit.updateMany({
+      where: { locationId: deleteId },
+      data: { locationId: keepId },
+    }),
+    prisma.locationPhoto.updateMany({
+      where: { locationId: deleteId },
+      data: { locationId: keepId },
+    }),
+    prisma.collectionLocation.deleteMany({
+      where: {
+        locationId: deleteId,
+        collectionId: { in: colsToDrop.map((c) => c.collectionId) },
+      },
+    }),
+    prisma.collectionLocation.updateMany({
+      where: {
+        locationId: deleteId,
+        collectionId: { in: colsToMove.map((c) => c.collectionId) },
+      },
+      data: { locationId: keepId },
+    }),
+    prisma.tripLocation.deleteMany({
+      where: { id: { in: stopsToDrop.map((s) => s.id) } },
+    }),
+    prisma.tripLocation.updateMany({
+      where: { id: { in: stopsToMove.map((s) => s.id) } },
+      data: { locationId: keepId },
+    }),
+    prisma.location.update({
+      where: { id: deleteId },
+      data: { deletedAt: new Date() },
+    }),
+  ]);
+
   revalidateAppPaths("/locations", "/settings", "/trips", "/collections");
 }
 
 export async function searchLocationsQuick(
   query: string,
-  opts?: { lat?: number; lng?: number }
+  opts?: { lat?: number; lng?: number },
 ) {
   const userId = await requireAuth();
   const nl = parseHebrewQuery(query);
@@ -487,12 +537,16 @@ export async function searchLocationsQuick(
       .map(({ id, title, category }) => ({ id, title, category }));
   }
 
-  return rows.slice(0, 8).map(({ id, title, category }) => ({ id, title, category }));
+  return rows
+    .slice(0, 8)
+    .map(({ id, title, category }) => ({ id, title, category }));
 }
 
 export async function getRandomLocation() {
   const userId = await requireAuth();
-  const count = await prisma.location.count({ where: { userId, ...activeLocationWhere } });
+  const count = await prisma.location.count({
+    where: { userId, ...activeLocationWhere },
+  });
   if (!count) return null;
   const skip = Math.floor(Math.random() * count);
   const results = await prisma.location.findMany({
@@ -510,11 +564,19 @@ export async function getLocationById(id: string) {
     where: { id, userId, ...activeLocationWhere },
     include: {
       category: true,
-      photos: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] },
+      // Caps on a page rendered for every spot. Unbounded, a well-used spot
+      // pulled its entire visit history — with each visit's photos — into a
+      // serverless response on every view. `_count` still reports the true
+      // total, so the UI shows the real number rather than the page size.
+      photos: {
+        orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+        take: LOCATION_DETAIL_PHOTOS_MAX,
+      },
       tags: { include: { tag: true } },
       visits: {
-        include: { photos: true },
+        include: { photos: { take: LOCATION_DETAIL_VISIT_PHOTOS_MAX } },
         orderBy: { visitedAt: "desc" },
+        take: LOCATION_DETAIL_VISITS_MAX,
       },
       _count: { select: { visits: true } },
     },
@@ -526,7 +588,7 @@ export async function addLocationPhoto(
   url: string,
   isPrimary = false,
   /** Offline blob id; makes a replayed upload return the original row. */
-  clientId?: string
+  clientId?: string,
 ) {
   const userId = await requireAuth();
   await assertOwns(userId, locationId);

@@ -1,8 +1,10 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidateAppPaths } from "@/lib/revalidate";
 import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
+import { CLONE_STOPS_MAX } from "@/lib/export/limits";
 import { collectionSchema } from "@/lib/validations/schemas";
 import {
   assertCanCloneCollection,
@@ -48,6 +50,10 @@ export async function getLocationCollectionIds(locationId: string) {
   const members = await prisma.collectionLocation.findMany({
     where: { locationId, collection: { userId } },
     select: { collectionId: true },
+    // A spot cannot belong to more collections than the user has, and
+    // getCollections already caps at 500 — beyond that the checkbox list this
+    // feeds has nothing to match against anyway.
+    take: 500,
   });
   return members.map((m) => m.collectionId);
 }
@@ -224,44 +230,67 @@ export async function cloneCollection(collectionId: string, shareToken?: string)
           },
         },
         orderBy: { sortOrder: "asc" },
+        take: CLONE_STOPS_MAX + 1,
       },
     },
   });
   if (!source) throw new Error("Collection not found");
 
-  const clone = await prisma.collection.create({
-    data: {
-      userId,
-      name: `${source.name} (עותק)`,
-      description: source.description,
-      color: source.color,
-      icon: source.icon,
-    },
-  });
+  const truncated = source.locations.length > CLONE_STOPS_MAX;
+  const copyable = source.locations
+    .slice(0, CLONE_STOPS_MAX)
+    // SECRET spots are skipped rather than fuzzed: copying them would put
+    // exact coordinates into an atlas whose owner was never trusted with them.
+    .filter((cl) => cl.location && !cl.location.deletedAt && cl.location.privacy !== "SECRET");
 
-  let sortOrder = 0;
-  for (const cl of source.locations) {
-    const loc = cl.location;
-    if (!loc || loc.deletedAt) continue;
-    // Never copy SECRET exact coordinates into another atlas
-    if (loc.privacy === "SECRET") continue;
-    const created = await prisma.location.create({
-      data: {
-        userId,
-        title: loc.title,
-        description: loc.description,
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        altitude: loc.altitude,
-        address: loc.address,
-        privacy: "PRIVATE",
-      },
-    });
-    await prisma.collectionLocation.create({
-      data: { collectionId: clone.id, locationId: created.id, sortOrder: sortOrder++ },
-    });
-  }
+  // Ids are minted here so the join rows can be built without reading back
+  // what createMany inserted — createMany does not return them.
+  const rows = copyable.map((cl, i) => ({ id: randomUUID(), loc: cl.location!, sortOrder: i }));
+
+  // One transaction, three statements regardless of size. The previous shape
+  // issued two sequential creates per stop with no cap, so a large shared
+  // collection meant hundreds of round trips to Neon — and a failure part-way
+  // left a half-populated collection sitting in the user's atlas.
+  const clone = await prisma.$transaction(
+    async (tx) => {
+      const created = await tx.collection.create({
+        data: {
+          userId,
+          name: `${source.name} (עותק)`,
+          description: source.description,
+          color: source.color,
+          icon: source.icon,
+        },
+      });
+
+      if (rows.length) {
+        await tx.location.createMany({
+          data: rows.map(({ id, loc }) => ({
+            id,
+            userId,
+            title: loc.title,
+            description: loc.description,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            altitude: loc.altitude,
+            address: loc.address,
+            privacy: "PRIVATE" as const,
+          })),
+        });
+        await tx.collectionLocation.createMany({
+          data: rows.map(({ id, sortOrder }) => ({
+            collectionId: created.id,
+            locationId: id,
+            sortOrder,
+          })),
+        });
+      }
+
+      return created;
+    },
+    { timeout: 20_000 }
+  );
 
   revalidateAppPaths("/collections", "/locations");
-  return clone;
+  return { ...clone, truncated };
 }

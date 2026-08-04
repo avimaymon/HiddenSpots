@@ -1,7 +1,9 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { auth } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
+import { CLONE_STOPS_MAX, TRIP_STOPS_MAX } from "@/lib/export/limits";
 import { revalidateAppPaths } from "@/lib/revalidate";
 import { tripSchema } from "@/lib/validations/schemas";
 import {
@@ -47,6 +49,9 @@ export async function getTripById(id: string) {
     include: {
       locations: {
         orderBy: { sortOrder: "asc" },
+        // Bounded like every other list here; a trip with more stops than this
+        // is past what the itinerary UI can usefully render anyway.
+        take: TRIP_STOPS_MAX,
         include: {
           location: {
             include: {
@@ -162,6 +167,8 @@ export async function cloneTrip(tripId: string, shareToken?: string) {
       locations: {
         where: { location: { deletedAt: null } },
         orderBy: { sortOrder: "asc" },
+        // +1 so the caller can tell a full page from a truncated one.
+        take: CLONE_STOPS_MAX + 1,
         include: {
           location: {
             select: {
@@ -181,40 +188,56 @@ export async function cloneTrip(tripId: string, shareToken?: string) {
   });
   if (!source) throw new Error("Trip not found");
 
-  const clone = await prisma.trip.create({
-    data: {
-      userId,
-      name: `${source.name} (עותק)`,
-      description: source.description,
-      color: source.color,
-    },
-  });
+  const truncated = source.locations.length > CLONE_STOPS_MAX;
+  // SECRET spots are skipped rather than fuzzed: copying them would put exact
+  // coordinates into an atlas whose owner was never trusted with them.
+  const rows = source.locations
+    .slice(0, CLONE_STOPS_MAX)
+    .filter((s) => s.location && !s.location.deletedAt && s.location.privacy !== "SECRET")
+    // Ids minted here so the join rows can be built without reading back what
+    // createMany inserted — createMany does not return them.
+    .map((stop) => ({ id: randomUUID(), loc: stop.location!, stop }));
 
-  for (const stop of source.locations) {
-    const loc = stop.location;
-    if (!loc || loc.deletedAt || loc.privacy === "SECRET") continue;
-    const created = await prisma.location.create({
-      data: {
-        userId,
-        title: loc.title,
-        description: loc.description,
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        altitude: loc.altitude,
-        address: loc.address,
-        privacy: "PRIVATE",
-      },
-    });
-    await prisma.tripLocation.create({
-      data: {
-        tripId: clone.id,
-        locationId: created.id,
-        sortOrder: stop.sortOrder,
-        notes: stop.notes,
-      },
-    });
-  }
+  const clone = await prisma.$transaction(
+    async (tx) => {
+      const created = await tx.trip.create({
+        data: {
+          userId,
+          name: `${source.name} (עותק)`,
+          description: source.description,
+          color: source.color,
+        },
+      });
+
+      if (rows.length) {
+        await tx.location.createMany({
+          data: rows.map(({ id, loc }) => ({
+            id,
+            userId,
+            title: loc.title,
+            description: loc.description,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            altitude: loc.altitude,
+            address: loc.address,
+            privacy: "PRIVATE" as const,
+          })),
+        });
+        await tx.tripLocation.createMany({
+          data: rows.map(({ id, stop }) => ({
+            tripId: created.id,
+            locationId: id,
+            sortOrder: stop.sortOrder,
+            notes: stop.notes,
+          })),
+        });
+      }
+
+      return created;
+    },
+    { timeout: 20_000 }
+  );
 
   revalidateAppPaths("/trips", "/locations");
-  return clone;
+  return { ...clone, truncated };
 }

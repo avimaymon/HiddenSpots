@@ -99,24 +99,33 @@ export async function updateVisit(id: string, data: unknown) {
 export async function deleteVisit(id: string) {
   const userId = await requireAuth();
   const visit = await assertOwns(userId, id);
-  await prisma.visit.delete({ where: { id } });
 
-  // Recalculate location stats without loading every visit row.
-  const [visitCount, latest] = await Promise.all([
-    prisma.visit.count({ where: { locationId: visit.locationId } }),
-    prisma.visit.findFirst({
-      where: { locationId: visit.locationId },
-      orderBy: { visitedAt: "desc" },
-      select: { visitedAt: true },
-    }),
-  ]);
-  await prisma.location.update({
-    where: { id: visit.locationId },
-    data: {
-      visitCount,
-      isVisited: visitCount > 0,
-      lastVisitedAt: latest?.visitedAt ?? null,
-    },
+  // Interactive form, unlike createVisit: the recount has to *read* what the
+  // delete left behind, so the statements cannot be batched blind. Run outside
+  // a transaction, a failure after the delete left visitCount permanently
+  // overstating the rows — and nothing recomputes it later.
+  await prisma.$transaction(async (tx) => {
+    await tx.visit.delete({ where: { id } });
+
+    // Recalculate from the surviving rows rather than decrementing, so a
+    // counter that has already drifted is corrected rather than carried.
+    const [visitCount, latest] = await Promise.all([
+      tx.visit.count({ where: { locationId: visit.locationId } }),
+      tx.visit.findFirst({
+        where: { locationId: visit.locationId },
+        orderBy: { visitedAt: "desc" },
+        select: { visitedAt: true },
+      }),
+    ]);
+
+    await tx.location.update({
+      where: { id: visit.locationId },
+      data: {
+        visitCount,
+        isVisited: visitCount > 0,
+        lastVisitedAt: latest?.visitedAt ?? null,
+      },
+    });
   });
 
   revalidateAppPaths("/dashboard", "/visits");
