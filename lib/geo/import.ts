@@ -109,17 +109,36 @@ function parseCSV(text: string): ImportPreview {
     return { locations: [], source: "CSV", count: 0, errors: ["CSV must have latitude/longitude columns"] };
   }
 
-  const locations: Partial<LocationFormData>[] = lines
-    .slice(1)
-    .filter((l) => l.trim())
-    .map((line) => {
-      const cols = line.split(",").map((c) => c.trim().replace(/"/g, ""));
-      return {
-        title: nameIdx !== -1 ? cols[nameIdx] : "CSV Location",
-        latitude: parseFloat(cols[latIdx]),
-        longitude: parseFloat(cols[lngIdx]),
-      };
-    });
+  /**
+   * Ragged rows are the norm in hand-edited CSV. A row shorter than the header
+   * yields `undefined` for the coordinate columns, and `parseFloat(undefined)`
+   * is NaN — which the import action's `== null` guard does not catch, so the
+   * row reached `locationSchema` and came back as a raw ZodError. The data was
+   * never at risk (the schema does reject NaN), but the preview showed NaN and
+   * the user was told nothing they could act on. Skipping the row and naming
+   * the line number is the honest version.
+   */
+  const locations: Partial<LocationFormData>[] = [];
+  const errors: string[] = [];
 
-  return { locations, source: "CSV", count: locations.length, errors: [] };
+  lines.slice(1).forEach((line, i) => {
+    if (!line.trim()) return;
+    const cols = line.split(",").map((c) => c.trim().replace(/"/g, ""));
+    const latitude = parseFloat(cols[latIdx] ?? "");
+    const longitude = parseFloat(cols[lngIdx] ?? "");
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      // +2: one for the header, one for 1-based line numbers.
+      errors.push(`Row ${i + 2}: missing or non-numeric coordinates`);
+      return;
+    }
+
+    locations.push({
+      title: (nameIdx !== -1 ? cols[nameIdx] : undefined) || "CSV Location",
+      latitude,
+      longitude,
+    });
+  });
+
+  return { locations, source: "CSV", count: locations.length, errors };
 }

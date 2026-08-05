@@ -115,8 +115,19 @@ Updated after T70–T107: security/privacy hardening, offline create/remap/disca
   What is genuinely left is payload, not paint: two render-blocking CSS chunks,
   ~410ms of unused JavaScript and ~730ms of script evaluation. That is bundle
   work, not a one-line fix.
-- **`noUncheckedIndexedAccess`.** 128 sites. Worth doing, but it is a
-  mechanical sweep whose diff would bury the substantive fixes in this pass.
+- **`noUncheckedIndexedAccess`.** 91 sites after this pass (was 128). Each was
+  reviewed rather than counted: they are overwhelmingly `for (let i = 0; i <
+  arr.length; i++)` indexing, and accesses already guarded by an early
+  `if (!xs.length) return` that the compiler cannot narrow through. Turning the
+  flag on today would mean ~90 non-null assertions — which makes the code
+  *less* safe by teaching the reader that `!` is routine, in exchange for
+  almost nothing.
+
+  The audit was still worth doing: it found one real defect (ragged CSV rows,
+  fixed) by looking for the shapes that genuinely can be undefined — `.find()`,
+  `.match()`, `.split()[n]`, `.pop()` — rather than by trusting the error count.
+  Revisit the flag alongside a refactor that replaces index loops with
+  iteration, where the assertions would not be needed.
 
 ## Verify
 
