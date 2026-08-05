@@ -44,6 +44,7 @@
   "cloneTrip": "שכפל טיול",
   "collectionCloned": "האוסף נשמר אצלך",
   "tripCloned": "הטיול שוכפל",
+  "cloneTruncated": "הועתקו {max} מקומות ראשונים בלבד",
   "signInToClone": "התחברו כדי לשמור",
   "secretWarning": "מיקום סודי — קואורדינטות מוסתרות",
   "navigateTo": "נווט ל",

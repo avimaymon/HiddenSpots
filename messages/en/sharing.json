@@ -44,6 +44,7 @@
   "cloneTrip": "Clone this trip",
   "collectionCloned": "Collection saved",
   "tripCloned": "Trip cloned",
+  "cloneTruncated": "Only the first {max} spots were copied",
   "signInToClone": "Sign in to save",
   "secretWarning": "Secret location — coordinates hidden",
   "navigateTo": "Navigate to",

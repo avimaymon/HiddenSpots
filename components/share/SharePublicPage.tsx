@@ -16,6 +16,7 @@ import { buildWazeNavigate } from "@/lib/navigation/external-links";
 import { cloneTrip } from "@/lib/actions/trips";
 import { cloneCollection } from "@/lib/actions/collections";
 import { publicCategoryLabel } from "@/lib/shares/public-location";
+import { CLONE_STOPS_MAX } from "@/lib/export/limits";
 import { toast } from "@/hooks/use-toast";
 
 const MapView = dynamic(
@@ -201,9 +202,17 @@ export function SharePublicPage({ share }: Props) {
                     collection.id,
                     share.publicToken ?? undefined
                   );
-                  toast({ title: t("collectionCloned"), variant: "success" });
+                  // The result used to be discarded with `void clone`, so a
+                  // capped clone reported plain success and the user simply
+                  // ended up with fewer spots than they saw.
+                  toast({
+                    title: t("collectionCloned"),
+                    description: clone.truncated
+                      ? t("cloneTruncated", { max: CLONE_STOPS_MAX })
+                      : undefined,
+                    variant: clone.truncated ? "default" : "success",
+                  });
                   router.push(`/collections`);
-                  void clone;
                 } catch {
                   toast({ title: t("signInToClone"), variant: "destructive" });
                 } finally {
@@ -314,7 +323,13 @@ export function SharePublicPage({ share }: Props) {
                         trip.id,
                         share.publicToken ?? undefined
                       );
-                      toast({ title: t("tripCloned"), variant: "success" });
+                      toast({
+                        title: t("tripCloned"),
+                        description: clone.truncated
+                          ? t("cloneTruncated", { max: CLONE_STOPS_MAX })
+                          : undefined,
+                        variant: clone.truncated ? "default" : "success",
+                      });
                       router.push(`/trips/${clone.id}`);
                     } catch {
                       toast({ title: t("signInToClone"), variant: "destructive" });
