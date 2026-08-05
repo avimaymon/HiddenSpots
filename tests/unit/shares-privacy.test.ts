@@ -183,6 +183,50 @@ describe("applyPrivacy", () => {
     expect(dist).toBeLessThan(500);
   });
 
+  it("survives the inversion attack, not merely a equality check", () => {
+    /**
+     * "Different from what the old scheme emits" is weaker than it sounds — an
+     * attacker could still land near the truth. This runs the actual attack:
+     * recover the offset vector from a known origin using the seed the
+     * recipient can build (`token:id`, both of which they hold), subtract it
+     * from the published point, and measure how far the result lands from the
+     * real spot.
+     *
+     * The first assertion deliberately proves the attack *works* against the
+     * old scheme. Without it, a passing test could mean the fix works or
+     * merely that the attack was written wrong.
+     */
+    const token = "tok";
+    const TRUE_LAT = 32.07;
+    const TRUE_LNG = 34.78;
+    const oldSeed = `${token}:l1`;
+
+    const offset = fuzzyCoordsStable(0, 0, 500, oldSeed);
+    const invert = (lat: number, lng: number) => ({
+      latitude: lat - offset.latitude,
+      longitude: lng - offset.longitude,
+    });
+
+    // The old scheme is invertible — subtracting the offset lands on the spot.
+    const oldPublished = fuzzyCoordsStable(TRUE_LAT, TRUE_LNG, 500, oldSeed);
+    const oldRecovered = invert(oldPublished.latitude, oldPublished.longitude);
+    expect(
+      getDistanceBetween(TRUE_LAT, TRUE_LNG, oldRecovered.latitude, oldRecovered.longitude)
+    ).toBeLessThan(1);
+
+    // The same attack against the HMAC-seeded output misses by more than the
+    // fuzz radius, so it tells the attacker nothing they did not already know.
+    const published = applyPrivacy(
+      { location: secretLoc("l1"), collection: null, trip: null },
+      token,
+      deriveSeed
+    ).location!;
+    const recovered = invert(published.latitude, published.longitude);
+    expect(
+      getDistanceBetween(TRUE_LAT, TRUE_LNG, recovered.latitude, recovered.longitude)
+    ).toBeGreaterThan(500);
+  });
+
   it("keeps a pin stable across repeated loads of the same share", () => {
     const input = { location: secretLoc("l1"), collection: null, trip: null };
     const a = applyPrivacy(input, "tok", deriveSeed).location!;

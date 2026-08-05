@@ -110,10 +110,15 @@ jobs:
       # iOS Safari is the dominant browser for a field PWA whose install flow is
       # Safari-specific. Installing only chromium silently failed those projects.
       - run: npx playwright install --with-deps chromium webkit
-      # All three device projects, Hebrew RTL 320px included — that is the
-      # app's primary target and it had never run in CI.
-      # Specs needing seeded credentials self-skip until TEST_* vars exist.
-      - run: npx playwright test tests/e2e/smoke.spec.ts tests/e2e/narrow-rtl.spec.ts
+      # Seeds the user, the SECRET spot and the share tokens the authenticated
+      # and share specs need, and exports them via $GITHUB_ENV. Without this,
+      # add-spot, secret-fuzz and share-privacy call test.skip and report green
+      # while asserting nothing — which left the SECRET coordinate fuzzing and
+      # the private-notes boundary with no end-to-end coverage at all.
+      - run: node scripts/seed-e2e.mjs --github
+      # All four specs, on all three device projects, Hebrew RTL 320px
+      # included — that is the app's primary target and it had never run in CI.
+      - run: npx playwright test
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
