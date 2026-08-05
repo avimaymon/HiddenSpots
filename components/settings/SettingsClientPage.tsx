@@ -20,7 +20,7 @@ import { OpsHealthSection } from "@/components/settings/OpsHealthSection";
 import { LocaleSwitcher } from "@/components/shared/LocaleSwitcher";
 import { toast } from "@/hooks/use-toast";
 import { useState, useRef } from "react";
-import { signOut } from "next-auth/react";
+import { signOutAndPurge } from "@/lib/offline/signout";
 import { useTranslations } from "next-intl";
 import { MAP_STYLES as STYLE_DEFS } from "@/lib/map/types";
 
@@ -93,7 +93,7 @@ export function SettingsClientPage({ initialPrefs, categories = [] }: Props) {
     try {
       await deleteAccount(deleteEmail);
       toast({ title: t("deleteAccountDeleted"), variant: "success" });
-      await signOut({ callbackUrl: "/" });
+      await signOutAndPurge("/");
     } catch (e) {
       toast({ title: String(e), variant: "destructive" });
     } finally {

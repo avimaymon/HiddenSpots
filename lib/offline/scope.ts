@@ -42,12 +42,7 @@ export function shouldClaimForUser(
   return Boolean(current) && !stored;
 }
 
-/** Namespace a localStorage key to one account. */
-export function scopedLocalStorageKey(base: string, userId: string): string {
-  return userId ? `${base}::${userId}` : base;
-}
-
-/** True for any localStorage key the offline store owns, scoped or not. */
+/** True for any localStorage key the offline store owns. */
 export function isOfflineLocalStorageKey(key: string): boolean {
   return OFFLINE_LOCAL_STORAGE_PREFIXES.some(
     (prefix) => key === prefix || key.startsWith(prefix)

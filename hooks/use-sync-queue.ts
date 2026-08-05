@@ -12,6 +12,7 @@ import {
   persistSyncPayload,
   remapClientLocationId,
   remapClientTempId,
+  assertOfflineOwner,
   resolveLocationId,
   resolveMappedId,
   type SyncQueueItem,
@@ -199,7 +200,14 @@ export async function processSyncItem(item: SyncQueueItem) {
   }
 }
 
-export function useSyncQueue() {
+/**
+ * @param userId Account that owns this browser's offline store. Required, not
+ * optional: the store is per-origin, so without it `flushSyncQueue` cannot
+ * tell whose queued writes it is draining and one account's spots land in the
+ * next account to sign in on the same device. Making it a required argument is
+ * what stops that guard from being silently skipped.
+ */
+export function useSyncQueue(userId: string) {
   const [pending, setPending] = useState(0);
   const [failed, setFailed] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -216,7 +224,7 @@ export function useSyncQueue() {
     if (syncing) return { synced: 0, failed: 0 };
     setSyncing(true);
     try {
-      const result = await flushSyncQueue(processSyncItem);
+      const result = await flushSyncQueue(processSyncItem, userId);
       if (result.failed > 0) {
         track("sync_failed", { failed: result.failed, synced: result.synced });
       } else if (result.synced > 0) {
@@ -227,13 +235,28 @@ export function useSyncQueue() {
     } finally {
       setSyncing(false);
     }
-  }, [syncing, refreshCounts]);
+  }, [syncing, refreshCounts, userId]);
 
   const dropStuck = useCallback(async () => {
     const n = await dropStuckSyncItems();
     await refreshCounts();
     return n;
   }, [refreshCounts]);
+
+  // Claim the store for this account, or purge it if it belongs to someone
+  // else — on mount, and independently of flushing. Doing it only inside
+  // flush would miss the case that matters most: signing in *offline* on a
+  // shared device never flushes, so the previous account's cached atlas would
+  // render to whoever signed in next.
+  useEffect(() => {
+    let cancelled = false;
+    void assertOfflineOwner(userId).then((ok) => {
+      if (!ok && !cancelled) void refreshCounts();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, refreshCounts]);
 
   useEffect(() => {
     const onOnline = () => {

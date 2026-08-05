@@ -7,7 +7,7 @@ import {
   Settings, LogOut, ChevronLeft,
 } from "lucide-react";
 import { useState } from "react";
-import { signOut } from "next-auth/react";
+import { signOutAndPurge } from "@/lib/offline/signout";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { AppLogo } from "@/components/shared/AppLogo";
@@ -138,7 +138,7 @@ export function Sidebar({ user }: SidebarProps) {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() => signOut({ callbackUrl: `/${locale}/signin` })}
+                  onClick={() => void signOutAndPurge(`/${locale}/signin`)}
                   title={t("signOut")}
                   className="shrink-0 text-muted-foreground hover:text-destructive"
                 >

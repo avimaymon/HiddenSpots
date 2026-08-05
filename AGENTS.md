@@ -63,6 +63,14 @@ Two rules when touching it:
   Every existing offline test follows this shape.
 - The store is per-origin, not per-account. It is scoped by an `ownerUserId`
   meta row and purged on user mismatch; keep any new table inside that purge.
+  `useSyncQueue(userId)` and `flushSyncQueue(handler, userId)` both take the
+  owner as a **required** argument, and every sign-out goes through
+  `signOutAndPurge`. That is not stylistic: the guard originally shipped with
+  an optional `userId` that its only caller never passed, so the whole
+  mechanism was dead code while looking complete and passing its unit tests.
+  If you add a sign-out path or another queue consumer, wire the owner through
+  it — `tests/unit/offline-owner-wiring.test.ts` asserts the connections
+  exist, because testing the pure functions cannot.
 
 Queue writes are idempotent via `clientId`. Do not strip it before calling the
 action — that is what allowed a lost response to duplicate a spot. `enqueueSync`

@@ -22,7 +22,7 @@ export default async function ProtectedLayout({
   return (
     <div className="flex app-height overflow-hidden bg-background">
       <PreferencesApplier fontSize={prefs?.fontSize ?? "default"} theme={prefs?.theme ?? "system"} />
-      <ShellExtras onboarded={prefs?.onboarded ?? false} />
+      <ShellExtras onboarded={prefs?.onboarded ?? false} userId={session.user.id!} />
       <Sidebar user={session.user} />
       <main id="main-content" className="flex-1 flex flex-col overflow-hidden min-w-0 md:pb-0 pb-nav">
         {children}

@@ -13,7 +13,3 @@ const RTL_LOCALES = new Set(["he"]);
 export function directionForLocale(locale: string): Direction {
   return RTL_LOCALES.has(locale) ? "rtl" : "ltr";
 }
-
-export function isRtlLocale(locale: string): boolean {
-  return directionForLocale(locale) === "rtl";
-}

@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { useSyncQueue } from "@/hooks/use-sync-queue";
 import { toast } from "@/hooks/use-toast";
 
-export function OfflineBanner() {
+export function OfflineBanner({ userId }: { userId: string }) {
   const t = useTranslations("pwa");
   const panelId = useId();
   const [offline, setOffline] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const { pending, failed, lastError, syncing, flush, dropStuck } = useSyncQueue();
+  const { pending, failed, lastError, syncing, flush, dropStuck } = useSyncQueue(userId);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect

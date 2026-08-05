@@ -4,7 +4,6 @@ import {
   OFFLINE_LOCAL_STORAGE_PREFIXES,
   shouldClaimForUser,
   shouldPurgeForUser,
-  scopedLocalStorageKey,
 } from "@/lib/offline/scope";
 
 describe("offline scope", () => {
@@ -43,21 +42,6 @@ describe("offline scope", () => {
     it("returns true when unset and current user is present", () => {
       expect(shouldClaimForUser(null, "user-1")).toBe(true);
       expect(shouldClaimForUser(undefined, "user-2")).toBe(true);
-    });
-  });
-
-  describe("scopedLocalStorageKey", () => {
-    it("namespaces a key under the given user", () => {
-      expect(scopedLocalStorageKey("hs_collections_v1", "user-123")).toBe(
-        "hs_collections_v1::user-123"
-      );
-    });
-
-    it("returns the base key when userId is empty", () => {
-      expect(scopedLocalStorageKey("hs_trips_v1", "")).toBe("hs_trips_v1");
-      expect(scopedLocalStorageKey("hs_trips_v1", null as unknown as string)).toBe(
-        "hs_trips_v1"
-      );
     });
   });
 

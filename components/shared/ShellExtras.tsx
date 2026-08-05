@@ -12,6 +12,8 @@ import { usePathname } from "next/navigation";
 
 interface Props {
   onboarded: boolean;
+  /** Owner of this browser's offline store — see useSyncQueue. */
+  userId: string;
 }
 
 function AnalyticsPageview() {
@@ -22,7 +24,7 @@ function AnalyticsPageview() {
   return null;
 }
 
-export function ShellExtras({ onboarded }: Props) {
+export function ShellExtras({ onboarded, userId }: Props) {
   const [dismissed, setDismissed] = useState(false);
   useVisualViewport();
   // OfflineBanner owns useSyncQueue — avoid double flush loops
@@ -30,7 +32,7 @@ export function ShellExtras({ onboarded }: Props) {
   return (
     <>
       <AnalyticsPageview />
-      <OfflineBanner />
+      <OfflineBanner userId={userId} />
       <PwaInstallPrompt />
       <WhatsNewModal />
       <FeedbackDialog />

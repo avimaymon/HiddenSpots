@@ -201,12 +201,6 @@ export async function assertOfflineOwner(userId: string): Promise<boolean> {
   return true;
 }
 
-/** Which account this store currently belongs to, if any. */
-export async function getOfflineOwner(): Promise<string | null> {
-  if (!offlineDb) return null;
-  const row = await offlineDb.meta.get(OWNER_META_KEY).catch(() => undefined);
-  return row?.value ?? null;
-}
 
 const OFFLINE_ATLAS_PACK_MAX = 800;
 
@@ -488,13 +482,14 @@ export async function remapClientLocationId(
 
 export async function flushSyncQueue(
   handler: (item: SyncQueueItem) => Promise<void>,
-  userId?: string
+  /** Required: an optional owner is an owner check that gets forgotten. */
+  userId: string
 ): Promise<{ synced: number; failed: number }> {
   if (!offlineDb) return { synced: 0, failed: 0 };
 
   // Never drain one account's queue into another's. On a mismatch the store is
   // purged and this flush is abandoned; the fresh store belongs to `userId`.
-  if (userId && !(await assertOfflineOwner(userId))) {
+  if (!(await assertOfflineOwner(userId))) {
     return { synced: 0, failed: 0 };
   }
 
