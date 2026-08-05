@@ -115,6 +115,21 @@ Updated after T70–T107: security/privacy hardening, offline create/remap/disca
   What is genuinely left is payload, not paint: two render-blocking CSS chunks,
   ~410ms of unused JavaScript and ~730ms of script evaluation. That is bundle
   work, not a one-line fix.
+- **`add-spot` quick-add sheet (`test.fixme`).** Running the spec for the first
+  time exposed and fixed four defects — English selectors on a Hebrew route, no
+  step timeouts (so it hung rather than failed), no geolocation grant, and the
+  what's-new modal intercepting the click. The final assertion still does not
+  settle. Marked `fixme` so it reports as known-broken rather than skipping
+  into silence; the surrounding assertions run. Findings are in the spec.
+
+- **Share page soft 404.** An invalid or revoked token renders the correct
+  not-found UI but returns HTTP 200: `app/[locale]/loading.tsx` opens a
+  Suspense boundary above the route, so Next commits the status before
+  `notFound()` runs. No leak and no user-visible problem, and the route is
+  `robots: noindex`, so the only real cost is that automation cannot tell an
+  invalid share by status code. Fixing it means moving loading boundaries
+  across the app — disproportionate for this.
+
 - **`noUncheckedIndexedAccess`.** 91 sites after this pass (was 128). Each was
   reviewed rather than counted: they are overwhelmingly `for (let i = 0; i <
   arr.length; i++)` indexing, and accesses already guarded by an early
