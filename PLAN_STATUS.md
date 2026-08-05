@@ -99,16 +99,22 @@ Updated after T70–T107: security/privacy hardening, offline create/remap/disca
   and touch targets on public routes — not enough to catch what that would
   disturb. Wants a deliberate visual pass, not a one-line change late in a
   hardening run.
-- **Lighthouse performance ≥0.90 (PLAN §19.18).** Measured 0.87 on `/he` and
-  0.85 on `/he/signin` at 320px mobile after the image and CSS work. FCP is
-  1.2s and CLS is 0.000; LCP (~3.9s) is the whole gap, and it is **almost
-  entirely render delay** — TTFB 458ms, load delay 0, load time 0, render
-  delay 3386ms on a *text* element. Removing the hero's opacity fade was tried
-  and verified applied (SSR now emits `opacity:1`) but did not move it, so the
-  cause is still open. Next suspects: `.text-gradient` paints glyphs through
-  `bg-clip-text` + `text-transparent`; webfont timing; and 732ms of script
-  evaluation contending for the main thread. The gate sits at 0.78 — honest
-  against measurement rather than aspirational.
+- **Lighthouse performance ≥0.90 (PLAN §19.18).** 0.87 on `/he`, 0.85 on
+  `/he/signin` at 320px. **There is no element-level LCP bug left.** Measured
+  in a real browser at Lighthouse's exact mobile profile (4x CPU, 150ms RTT,
+  1.6 Mbps, via CDP): LCP is **1312ms**, a *single* candidate, exactly equal
+  to FCP — so nothing gates the hero any more, no font-swap re-paint and no
+  hydration wait. Fonts all land by 1178ms.
+
+  Lighthouse's 3.9s comes from its default `throttlingMethod: "simulate"`
+  (Lantern), which models a slow link mathematically rather than measuring one.
+  The measurement method was deliberately **not** switched to `"devtools"` to
+  make the number look better — `simulate` is the standard, and the gate stays
+  at 0.78, honest against it.
+
+  What is genuinely left is payload, not paint: two render-blocking CSS chunks,
+  ~410ms of unused JavaScript and ~730ms of script evaluation. That is bundle
+  work, not a one-line fix.
 - **`noUncheckedIndexedAccess`.** 128 sites. Worth doing, but it is a
   mechanical sweep whose diff would bury the substantive fixes in this pass.
 
