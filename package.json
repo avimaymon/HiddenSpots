@@ -26,7 +26,7 @@
     "check:i18n": "node scripts/check-translations.mjs"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.8.0",
+    "@auth/prisma-adapter": "^2.11.3",
     "@hookform/resolvers": "^3.9.1",
     "@prisma/client": "^6.8.2",
     "@radix-ui/react-avatar": "^1.1.3",
