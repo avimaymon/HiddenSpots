@@ -168,6 +168,35 @@ reason (it caught `0_init` being unrunnable).
 - **`AUTH_SECRET` exposed**: rotate in Vercel and redeploy. This signs out every
   user, invalidates in-flight Drive OAuth states, and moves fuzzed SECRET pins.
 
+## Someone cannot sign in after the email-case migration
+
+Sign-in, registration and password reset match email case-insensitively
+(`lib/auth/email.ts`). The `normalize_user_email_case` migration lowercases
+existing rows so nobody is locked out by the change.
+
+It deliberately **skips** any row whose lowercase form is already taken by a
+different account — those are genuine duplicate registrations the old
+case-sensitive lookup allowed, and collapsing them automatically would either
+violate the unique index or destroy one account's data. Those users keep
+signing in exactly as before, with the case they registered with.
+
+Find them:
+
+```sql
+SELECT lower("email") AS normalized,
+       count(*)       AS accounts,
+       array_agg("id" ORDER BY "createdAt") AS ids
+FROM "User"
+WHERE "email" IS NOT NULL
+GROUP BY lower("email")
+HAVING count(*) > 1;
+```
+
+Each group is one person with two accounts. There is no safe automatic merge —
+both may hold spots, visits and shares. Contact them, confirm which account to
+keep, move anything worth keeping, then delete the other through the normal
+GDPR path so the cascades run.
+
 ## Deleting a user's account (GDPR)
 
 Self-service via Settings → Account. The cascade removes every owned row; photo
