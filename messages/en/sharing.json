@@ -85,6 +85,7 @@
   "commentsHeading": "Comments ({count})",
   "noComments": "No comments yet.",
   "deleteComment": "Delete",
+  "removeComment": "Remove comment",
   "explorerFallback": "Explorer",
   "viewOnlyHint": "This share is view-only. Ask the owner for comment access.",
   "navigateShareTitle": "Navigate & share",

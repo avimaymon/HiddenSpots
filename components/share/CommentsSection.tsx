@@ -25,6 +25,14 @@ interface Props {
   initialComments: Comment[];
   currentUserId?: string;
   canComment?: boolean;
+  /**
+   * Viewer owns the spot. `deleteComment` lets the owner remove any comment on
+   * their own spot, but the control was only ever rendered for a comment's
+   * author — so an abusive comment could only be deleted by the person who
+   * wrote it, and the moderation path existed server-side with no way to reach
+   * it.
+   */
+  isSpotOwner?: boolean;
   /** When set, comments go through token-scoped API (open/targeted share page). */
   shareToken?: string;
 }
@@ -34,6 +42,7 @@ export function CommentsSection({
   initialComments,
   currentUserId,
   canComment = false,
+  isSpotOwner = false,
   shareToken,
 }: Props) {
   const t = useTranslations("sharing");
@@ -95,13 +104,14 @@ export function CommentsSection({
                 </span>
               </div>
               <p className="mt-1 text-muted-foreground whitespace-pre-line">{c.body}</p>
-              {currentUserId === c.userId && (
+              {(currentUserId === c.userId || isSpotOwner) && (
                 <button
                   type="button"
                   onClick={() => handleDelete(c.id)}
                   className="mt-1 text-xs text-destructive/60 hover:text-destructive flex items-center gap-1"
                 >
-                  <Trash2 className="h-3 w-3" /> {t("deleteComment")}
+                  <Trash2 className="h-3 w-3" />{" "}
+                  {currentUserId === c.userId ? t("deleteComment") : t("removeComment")}
                 </button>
               )}
             </div>

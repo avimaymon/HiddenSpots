@@ -90,6 +90,7 @@ export default async function SharePage({ params }: Props) {
             initialComments={comments}
             currentUserId={session?.user?.id ?? undefined}
             canComment={canComment}
+            isSpotOwner={isOwner}
             shareToken={token}
           />
           <div className="flex justify-end">

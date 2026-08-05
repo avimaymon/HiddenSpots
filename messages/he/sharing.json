@@ -85,6 +85,7 @@
   "commentsHeading": "תגובות ({count})",
   "noComments": "אין תגובות עדיין.",
   "deleteComment": "מחק",
+  "removeComment": "הסר תגובה",
   "explorerFallback": "חוקר/ת",
   "viewOnlyHint": "שיתוף לצפייה בלבד. בקשו מהבעלים הרשאת תגובה.",
   "navigateShareTitle": "ניווט ושיתוף",
