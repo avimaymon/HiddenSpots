@@ -47,6 +47,11 @@ async function main() {
       passwordHash: await bcrypt.hash(PASSWORD, 10),
       onboarded: true,
       locale: "he",
+      // Leaflet needs no API key. CI holds no Mapbox or Google secrets, so a
+      // fixture defaulting to MAPBOX would render an empty map there and the
+      // map-dependent assertions would fail for want of a token rather than
+      // for any real reason. registerUser makes the same choice.
+      mapProvider: "LEAFLET",
     },
   });
 
