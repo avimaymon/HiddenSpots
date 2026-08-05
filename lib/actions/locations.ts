@@ -7,7 +7,10 @@ import { activeLocationWhere } from "@/lib/db/filters";
 import { locationSchema } from "@/lib/validations/schemas";
 import { assertCanEditLocation } from "@/lib/permissions/share-access";
 import { assertLocationAccess } from "@/lib/permissions/resource-access";
-import { stripOwnerOnlyLocationFields } from "@/lib/permissions/owner-only-fields";
+import {
+  stripOwnerOnlyLocationFields,
+  redactOwnerOnlyForRead,
+} from "@/lib/permissions/owner-only-fields";
 import { isAllowedPhotoUrl } from "@/lib/media/photo-url";
 import { parseHebrewQuery, hasNlFilters } from "@/lib/search/hebrew-nl";
 import type { Prisma } from "@prisma/client";
@@ -576,6 +579,8 @@ export async function getLocationById(id: string) {
   const userId = await requireAuth();
 
   let isOwner = true;
+  let canEdit = true;
+  let canComment = true;
   try {
     await assertOwns(userId, id);
   } catch {
@@ -587,6 +592,21 @@ export async function getLocationById(id: string) {
       // does not become an oracle for which ids exist.
       return null;
     }
+    // Opening the page no longer implies being able to change it, so the
+    // viewer's capabilities are reported alongside the spot. Without them the
+    // UI would offer a VIEW collaborator controls that fail server-side —
+    // worse than the 404 this replaced, because it looks like it worked until
+    // it doesn't. Each mirrors what the corresponding action actually asserts.
+    [canEdit, canComment] = await Promise.all([
+      assertLocationAccess(userId, id, "EDIT").then(
+        () => true,
+        () => false
+      ),
+      assertLocationAccess(userId, id, "COMMENT").then(
+        () => true,
+        () => false
+      ),
+    ]);
   }
 
   const location = await prisma.location.findFirst({
@@ -612,15 +632,25 @@ export async function getLocationById(id: string) {
     },
   });
 
-  if (!location || isOwner) return location;
+  if (!location) return null;
+  // `viewerIsOwner` gates the owner-only actions: delete, share, and the
+  // favourite / bucket-list / collection / trip controls, all of which either
+  // write to the owner's row or assert ownership of the spot.
+  if (isOwner) {
+    return {
+      ...location,
+      viewerIsOwner: true,
+      viewerCanEdit: true,
+      viewerCanComment: true,
+    };
+  }
 
   return {
-    ...stripOwnerOnlyLocationFields(location as unknown as Record<string, unknown>),
-    // Preserved deliberately: the collaborator must still be told the spot is
-    // fuzzed, or the map silently implies a precision it does not have.
-    privacy: location.privacy,
-    fuzzyCoordinates: location.fuzzyCoordinates,
-  } as typeof location;
+    ...redactOwnerOnlyForRead(location),
+    viewerIsOwner: false,
+    viewerCanEdit: canEdit,
+    viewerCanComment: canComment,
+  };
 }
 
 export async function addLocationPhoto(

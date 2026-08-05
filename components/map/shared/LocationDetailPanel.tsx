@@ -379,22 +379,29 @@ export function LocationDetailPanel({
       )}
 
       <div className="flex items-center gap-1 px-3 py-2 border-b border-border/50 shrink-0 bg-background/50">
-        <ActionBtn
-          onClick={handleToggleFavorite}
-          active={location.isFavorite}
-          activeClass="text-rose-500 bg-rose-500/10"
-          title={t("actionFavorite")}
-        >
-          <Heart className={cn("h-4 w-4", location.isFavorite && "fill-current")} />
-        </ActionBtn>
-        <ActionBtn
-          onClick={handleToggleBucketList}
-          active={location.isBucketList}
-          activeClass="text-amber-500 bg-amber-500/10"
-          title={t("actionBucket")}
-        >
-          <Bookmark className={cn("h-4 w-4", location.isBucketList && "fill-current")} />
-        </ActionBtn>
+        {/* Favourite and bucket-list are flags on the *owner's* row, so a
+            collaborator toggling them would be editing someone else's data —
+            and toggleFavorite/toggleBucketList assert ownership anyway. */}
+        {location.viewerIsOwner && (
+          <ActionBtn
+            onClick={handleToggleFavorite}
+            active={location.isFavorite}
+            activeClass="text-rose-500 bg-rose-500/10"
+            title={t("actionFavorite")}
+          >
+            <Heart className={cn("h-4 w-4", location.isFavorite && "fill-current")} />
+          </ActionBtn>
+        )}
+        {location.viewerIsOwner && (
+          <ActionBtn
+            onClick={handleToggleBucketList}
+            active={location.isBucketList}
+            activeClass="text-amber-500 bg-amber-500/10"
+            title={t("actionBucket")}
+          >
+            <Bookmark className={cn("h-4 w-4", location.isBucketList && "fill-current")} />
+          </ActionBtn>
+        )}
         <ActionBtn
           title={t("actionNavigateShare")}
           onClick={() => setShareOpen(true)}
@@ -402,29 +409,49 @@ export function LocationDetailPanel({
         >
           <Navigation className="h-4 w-4" />
         </ActionBtn>
-        <ActionBtn
-          title={tv("logVisit")}
-          onClick={() => setVisitOpen(true)}
-          className={cn(location.isVisited && "text-green-600 bg-green-500/10")}
-        >
-          <Footprints className="h-4 w-4" />
-        </ActionBtn>
-        <ActionBtn title={t("actionAddCollection")} onClick={() => setCollectionOpen(true)}>
-          <FolderPlus className="h-4 w-4" />
-        </ActionBtn>
-        <ActionBtn title={t("actionAddTrip")} onClick={() => setTripOpen(true)}>
-          <Route className="h-4 w-4" />
-        </ActionBtn>
+        {/* Logging a visit only needs COMMENT, which is why it has its own
+            capability rather than riding on ownership. */}
+        {location.viewerCanComment && (
+          <ActionBtn
+            title={tv("logVisit")}
+            onClick={() => setVisitOpen(true)}
+            className={cn(location.isVisited && "text-green-600 bg-green-500/10")}
+          >
+            <Footprints className="h-4 w-4" />
+          </ActionBtn>
+        )}
+        {/* Both actions assert ownership of the *spot*, not just of the
+            collection or trip, so they are unavailable on a shared spot. */}
+        {location.viewerIsOwner && (
+          <ActionBtn title={t("actionAddCollection")} onClick={() => setCollectionOpen(true)}>
+            <FolderPlus className="h-4 w-4" />
+          </ActionBtn>
+        )}
+        {location.viewerIsOwner && (
+          <ActionBtn title={t("actionAddTrip")} onClick={() => setTripOpen(true)}>
+            <Route className="h-4 w-4" />
+          </ActionBtn>
+        )}
         <div className="flex-1" />
-        <ActionBtn title={t("actionShareLink")} onClick={() => setDbShareOpen(true)}>
-          <Share2 className="h-4 w-4" />
-        </ActionBtn>
-        <ActionBtn title={t("actionEdit")} onClick={() => setEditOpen(true)}>
-          <Edit2 className="h-4 w-4" />
-        </ActionBtn>
-        <ActionBtn title={t("actionDelete")} onClick={handleDelete} className="text-destructive hover:bg-destructive/10">
-          <Trash2 className="h-4 w-4" />
-        </ActionBtn>
+        {/* Gated on the viewer's actual capability. Opening a shared spot no
+            longer implies being able to change it, and offering controls that
+            fail server-side is worse than not offering them — it looks like it
+            worked until it doesn't. Sharing and deleting stay with the owner. */}
+        {location?.viewerIsOwner && (
+          <ActionBtn title={t("actionShareLink")} onClick={() => setDbShareOpen(true)}>
+            <Share2 className="h-4 w-4" />
+          </ActionBtn>
+        )}
+        {location?.viewerCanEdit && (
+          <ActionBtn title={t("actionEdit")} onClick={() => setEditOpen(true)}>
+            <Edit2 className="h-4 w-4" />
+          </ActionBtn>
+        )}
+        {location?.viewerIsOwner && (
+          <ActionBtn title={t("actionDelete")} onClick={handleDelete} className="text-destructive hover:bg-destructive/10">
+            <Trash2 className="h-4 w-4" />
+          </ActionBtn>
+        )}
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
